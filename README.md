@@ -1,4 +1,7 @@
 ## Convolutional Neural Networks for Sentence Classification
+
+Fork from https://github.com/yoonkim/CNN_sentence.git
+
 Code for the paper [Convolutional Neural Networks for Sentence Classification](http://arxiv.org/abs/1408.5882) (EMNLP 2014).
 
 Runs the model on Pang and Lee's movie review dataset (MR in the paper).
@@ -15,23 +18,47 @@ https://code.google.com/p/word2vec/
 To process the raw data, run
 
 ```
-python process_data.py path
+./process_data.py path clean pos_file neg_file data
 ```
 
-where path points to the word2vec binary file (i.e. `GoogleNews-vectors-negative300.bin` file). 
-This will create a pickle object called `mr.p` in the same folder, which contains the dataset
+where path points to the word2vec binary file (e.g. `GoogleNews-vectors-negative300.bin` file),
+clean is 0/1 depending on whether text should be lower-cased and tokenized,
+pos_file, neg_file contain the positive/negative examples from the corpus.
+This will create a pickle object called `data` in the same folder, which contains the dataset
 in the right format.
 
 Note: This will create the dataset with different fold-assignments than was used in the paper.
 You should still be getting a CV score of >81% with CNN-nonstatic model, though.
 
+### Invocation
+...
+usage: conv_net_sentence.py [-h] [-train] [-static] [-rand] [-filters FILTERS]
+                            [-data DATA] [-dropout DROPOUT] [-epochs EPOCHS]
+                            model
+
+CNN sentence classifier.
+
+positional arguments:
+  model             model file (default mr)
+
+optional arguments:
+  -h, --help        show this help message and exit
+  -train            train model
+  -static           static or nonstatic
+  -rand             random vector initializatino
+  -filters FILTERS  n[,n]* (default 3,4,5)
+  -data DATA        data file (default mr.data)
+  -dropout DROPOUT  dropout probability (default 0.5)
+  -epochs EPOCHS    training iterations (default 25)
+...
+
 ### Running the models (CPU)
 Example commands:
 
 ```
-THEANO_FLAGS=mode=FAST_RUN,device=cpu,floatX=float32 python conv_net_sentence.py -nonstatic -rand
-THEANO_FLAGS=mode=FAST_RUN,device=cpu,floatX=float32 python conv_net_sentence.py -static -word2vec
-THEANO_FLAGS=mode=FAST_RUN,device=cpu,floatX=float32 python conv_net_sentence.py -nonstatic -word2vec
+THEANO_FLAGS=mode=FAST_RUN,device=cpu,floatX=float32 ./conv_net_sentence.py -rand
+THEANO_FLAGS=mode=FAST_RUN,device=cpu,floatX=float32 ./conv_net_sentence.py -word2vec -static
+THEANO_FLAGS=mode=FAST_RUN,device=cpu,floatX=float32 ./conv_net_sentence.py
 ```
 
 This will run the CNN-rand, CNN-static, and CNN-nonstatic models respectively in the paper.

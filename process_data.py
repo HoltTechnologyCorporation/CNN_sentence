@@ -1,12 +1,14 @@
+#!/usr/bin/env python
+
 import numpy as np
-import cPickle
+import cPickle as pickle
 from collections import defaultdict
 import sys, re
-import pandas as pd
 
 def build_data_cv(data_folder, cv=10, clean_string=True):
     """
     Loads data and split into 10 folds.
+    :return: sents (with class and split properties), word doc freq.
     """
     revs = []
     pos_file = data_folder[0]
@@ -14,8 +16,10 @@ def build_data_cv(data_folder, cv=10, clean_string=True):
     vocab = defaultdict(float)
     with open(pos_file, "rb") as f:
         for line in f:       
-            rev = []
-            rev.append(line.strip())
+            # rev = []
+            # rev.append(line.strip())
+            # Attardi
+            rev = line.strip().split()
             if clean_string:
                 orig_rev = clean_str(" ".join(rev))
             else:
@@ -30,8 +34,10 @@ def build_data_cv(data_folder, cv=10, clean_string=True):
             revs.append(datum)
     with open(neg_file, "rb") as f:
         for line in f:       
-            rev = []
-            rev.append(line.strip())
+            # rev = []
+            # rev.append(line.strip())
+            # Attardi
+            rev = line.strip().split()
             if clean_string:
                 orig_rev = clean_str(" ".join(rev))
             else:
@@ -48,7 +54,7 @@ def build_data_cv(data_folder, cv=10, clean_string=True):
     
 def get_W(word_vecs, k=300):
     """
-    Get word matrix. W[i] is the vector for word indexed by i
+    Get word matrix and word index dict. W[i] is the vector for word indexed by i
     """
     vocab_size = len(word_vecs)
     word_idx_map = dict()
@@ -124,10 +130,15 @@ def clean_str_sst(string):
 
 if __name__=="__main__":    
     w2v_file = sys.argv[1]     
-    data_folder = ["rt-polarity.pos","rt-polarity.neg"]    
+    #data_folder = ["rt-polarity.pos","rt-polarity.neg"]
+    file_pos = sys.argv[2]      # Attardi
+    file_neg = sys.argv[3]      # Attardi
+    data_folder = [file_pos, file_neg] # Attardi
     print "loading data...",        
-    revs, vocab = build_data_cv(data_folder, cv=10, clean_string=True)
-    max_l = np.max(pd.DataFrame(revs)["num_words"])
+    #revs, vocab = build_data_cv(data_folder, cv=10, clean_string=True)
+    clean = int(sys.argv[4])         # Attardi
+    revs, vocab = build_data_cv(data_folder, cv=10, clean_string=clean)
+    max_l = max(x["num_words"] for x in revs)
     print "data loaded!"
     print "number of sentences: " + str(len(revs))
     print "vocab size: " + str(len(vocab))
@@ -141,6 +152,8 @@ if __name__=="__main__":
     rand_vecs = {}
     add_unknown_words(rand_vecs, vocab)
     W2, _ = get_W(rand_vecs)
-    cPickle.dump([revs, W, W2, word_idx_map, vocab], open("mr.p", "wb"))
+    #pickle.dump([revs, W, W2, word_idx_map, vocab], open("mr.p", "wb"))
+    file_out = sys.argv[5]      # Attardi
+    pickle.dump([revs, W, W2, word_idx_map, vocab], open(file_out, "wb"))
     print "dataset created!"
     

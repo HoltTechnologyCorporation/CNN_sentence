@@ -46,9 +46,11 @@ class HiddenLayer(object):
                 W_values = numpy.asarray(rng.uniform(low=-numpy.sqrt(6. / (n_in + n_out)), high=numpy.sqrt(6. / (n_in + n_out)),
                                                      size=(n_in, n_out)), dtype=theano.config.floatX)
             W = theano.shared(value=W_values, name='W')        
+            # W = theano.matrix(value=W_values, name='W')        
         if b is None:
             b_values = numpy.zeros((n_out,), dtype=theano.config.floatX)
             b = theano.shared(value=b_values, name='b')
+            # b = theano.vector(value=b_values, name='b')
 
         self.W = W
         self.b = b
@@ -266,6 +268,8 @@ class LogisticRegression(object):
             self.W = theano.shared(
                     value=numpy.zeros((n_in, n_out), dtype=theano.config.floatX),
                     name='W')
+            # self.W = T.fmatrix(
+            #         name='W')
         else:
             self.W = W
 
@@ -274,6 +278,9 @@ class LogisticRegression(object):
             self.b = theano.shared(
                     value=numpy.zeros((n_out,), dtype=theano.config.floatX),
                     name='b')
+            # self.b = T.as_tensor_variable(
+            #         numpy.zeros((n_out,), dtype=theano.config.floatX),
+            #         name='b')
         else:
             self.b = b
 
@@ -379,12 +386,17 @@ class LeNetConvPoolLayer(object):
         if self.non_linear=="none" or self.non_linear=="relu":
             self.W = theano.shared(numpy.asarray(rng.uniform(low=-0.01,high=0.01,size=filter_shape), 
                                                 dtype=theano.config.floatX),borrow=True,name="W_conv")
+            # self.W = T.as_tensor_variable(numpy.asarray(rng.uniform(low=-0.01,high=0.01,size=filter_shape), 
+            #                                     dtype=theano.config.floatX),name="W_conv")
         else:
             W_bound = numpy.sqrt(6. / (fan_in + fan_out))
             self.W = theano.shared(numpy.asarray(rng.uniform(low=-W_bound, high=W_bound, size=filter_shape),
                 dtype=theano.config.floatX),borrow=True,name="W_conv")   
+            # self.W = T.as_tensor_variable(numpy.asarray(rng.uniform(low=-W_bound, high=W_bound, size=filter_shape),
+            #     dtype=theano.config.floatX),name="W_conv")   
         b_values = numpy.zeros((filter_shape[0],), dtype=theano.config.floatX)
         self.b = theano.shared(value=b_values, borrow=True, name="b_conv")
+        # self.b = T.as_tensor_variable(b_values, name="b_conv")
         
         # convolve input feature maps with filters
         conv_out = conv.conv2d(input=input, filters=self.W,filter_shape=self.filter_shape, image_shape=self.image_shape)

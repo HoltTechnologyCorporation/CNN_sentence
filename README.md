@@ -31,7 +31,7 @@ Note: This will create the dataset with different fold-assignments than was used
 You should still be getting a CV score of >81% with CNN-nonstatic model, though.
 
 ### Invocation
-...
+```
 usage: conv_net_sentence.py [-h] [-train] [-static] [-rand] [-filters FILTERS]
                             [-data DATA] [-dropout DROPOUT] [-epochs EPOCHS]
                             model
@@ -50,7 +50,7 @@ optional arguments:
   -data DATA        data file (default mr.data)
   -dropout DROPOUT  dropout probability (default 0.5)
   -epochs EPOCHS    training iterations (default 25)
-...
+```
 
 ### Running the models (CPU)
 Example commands:

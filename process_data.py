@@ -5,53 +5,39 @@ import cPickle as pickle
 from collections import defaultdict
 import sys, re
 
-def build_data_cv(data_folder, cv=10, clean_string=True):
+tagField = 2
+textField = 3
+label = {'negative': 0,
+         'positive': 1,
+         'neutral': 2
+         }
+
+def build_data_cv(train_file, cv=10, clean_string=True):
     """
     Loads data and split into 10 folds.
     :return: sents (with class and split properties), word doc freq.
     """
     revs = []
-    pos_file = data_folder[0]
-    neg_file = data_folder[1]
-    vocab = defaultdict(float)
-    with open(pos_file, "rb") as f:
+    vocab = defaultdict(int)
+    with open(train_file, "rb") as f:
         for line in f:       
-            # rev = []
-            # rev.append(line.strip())
-            # Attardi
-            rev = line.strip().split()
+            fields = line.strip().split("\t")
+            text = fields[textField]
+            tag = fields[tagField]
             if clean_string:
-                orig_rev = clean_str(" ".join(rev))
+                clean_text = clean_str(text)
             else:
-                orig_rev = " ".join(rev).lower()
-            words = set(orig_rev.split())
-            for word in words:
+                clean_text = text.lower()
+            words = clean_text.split()
+            for word in set(words):
                 vocab[word] += 1
-            datum  = {"y":1, 
-                      "text": orig_rev,                             
-                      "num_words": len(orig_rev.split()),
-                      "split": np.random.randint(0,cv)}
-            revs.append(datum)
-    with open(neg_file, "rb") as f:
-        for line in f:       
-            # rev = []
-            # rev.append(line.strip())
-            # Attardi
-            rev = line.strip().split()
-            if clean_string:
-                orig_rev = clean_str(" ".join(rev))
-            else:
-                orig_rev = " ".join(rev).lower()
-            words = set(orig_rev.split())
-            for word in words:
-                vocab[word] += 1
-            datum  = {"y":0, 
-                      "text": orig_rev,                             
-                      "num_words": len(orig_rev.split()),
-                      "split": np.random.randint(0,cv)}
+            datum = {"y": label[tag],
+                     "text": clean_text,
+                     "num_words": len(words),
+                     "split": np.random.randint(0, cv)}
             revs.append(datum)
     return revs, vocab
-    
+
 def get_W(word_vecs, k=300):
     """
     Get word matrix and word index dict. W[i] is the vector for word indexed by i
@@ -100,10 +86,10 @@ def add_unknown_words(word_vecs, vocab, min_df=1, k=300):
         if word not in word_vecs and vocab[word] >= min_df:
             word_vecs[word] = np.random.uniform(-0.25,0.25,k)  
 
-def clean_str(string, TREC=False):
+def tokenize(string, no_lower=False):
     """
     Tokenization/string cleaning for all datasets except for SST.
-    Every dataset is lower cased except for TREC
+    Lower case except when no_lower is Ytur
     """
     string = re.sub(r"[^A-Za-z0-9(),!?\'\`]", " ", string)     
     string = re.sub(r"\'s", " \'s", string) 
@@ -118,9 +104,9 @@ def clean_str(string, TREC=False):
     string = re.sub(r"\)", " \) ", string) 
     string = re.sub(r"\?", " \? ", string) 
     string = re.sub(r"\s{2,}", " ", string)    
-    return string.strip() if TREC else string.strip().lower()
+    return string.strip() if no_lower else string.strip().lower()
 
-def clean_str_sst(string):
+def tokenize_sst(string):
     """
     Tokenization/string cleaning for the SST dataset
     """
@@ -130,14 +116,11 @@ def clean_str_sst(string):
 
 if __name__=="__main__":    
     w2v_file = sys.argv[1]     
-    #data_folder = ["rt-polarity.pos","rt-polarity.neg"]
-    file_pos = sys.argv[2]      # Attardi
-    file_neg = sys.argv[3]      # Attardi
-    data_folder = [file_pos, file_neg] # Attardi
+    train_file = sys.argv[2]    # Attardi
+    clean = int(sys.argv[3])    # Attardi
+    np.random.seed(345)         # for replicability
     print "loading data...",        
-    #revs, vocab = build_data_cv(data_folder, cv=10, clean_string=True)
-    clean = int(sys.argv[4])         # Attardi
-    revs, vocab = build_data_cv(data_folder, cv=10, clean_string=clean)
+    revs, vocab = build_data_cv(train_file, cv=10, clean_string=clean)
     max_l = max(x["num_words"] for x in revs)
     print "data loaded!"
     print "number of sentences: " + str(len(revs))
@@ -153,7 +136,7 @@ if __name__=="__main__":
     add_unknown_words(rand_vecs, vocab)
     W2, _ = get_W(rand_vecs)
     #pickle.dump([revs, W, W2, word_idx_map, vocab], open("mr.p", "wb"))
-    file_out = sys.argv[5]      # Attardi
+    file_out = sys.argv[4]      # Attardi
     pickle.dump([revs, W, W2, word_idx_map, vocab], open(file_out, "wb"))
     print "dataset created!"
-    
+

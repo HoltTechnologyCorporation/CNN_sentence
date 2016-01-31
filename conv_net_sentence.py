@@ -320,16 +320,18 @@ def make_idx_data_cv(revs, word_index, cv, max_l, pad):
     return train, test
   
 
-def read_corpus(filename, word_index, max_l, pad=2, clean_string=False):
+def read_corpus(filename, word_index, max_l, pad=2, clean_string=False,
+                tagField=2, textField=3):
     test = []
-    with open(filename, "rb") as f:
+    with open(filename) as f:
         for line in f:
-            tokens = line.strip().split()
+            fields = line.strip().split("\t")
+            text = fields[textField]
             if clean_string:
-                orig_clean = clean_str(" ".join(tokens))
+                text_clean = clean_str(text)
             else:
-                orig_clean = " ".join(tokens).lower()
-            sent = get_idx_from_sent(orig_clean, word_index, max_l, pad)
+                text_clean = text.lower()
+            sent = get_idx_from_sent(text_clean, word_index, max_l, pad)
             #sent.append(0)      # unknown y
             test.append(sent)
     return np.array(test, dtype="int32")
@@ -366,11 +368,18 @@ if __name__=="__main__":
 
         cnn.activations = [Iden] #TODO: save it in the model
 
-        test_set_x = read_corpus(args.input, word_index, max_l, pad)
-        test_y_pred = cnn.predict(test_set_x)
-        test_model = theano.function([cnn.x], test_y_pred, allow_input_downcast=True)
+        tagField = 2
+        textField = 3
+        test_set_x = read_corpus(args.input, word_index, max_l, pad, textField=textField)
+        test_set_y_pred = cnn.predict(test_set_x)
+        test_model = theano.function([cnn.x], test_set_y_pred, allow_input_downcast=True)
         results = test_model(test_set_x)
-        print results.shape
+        # invert indices (from process_data.py)
+        labels = ['negative', 'positive', 'neutral']
+        for line, y in zip(open(args.input), results):
+            tokens = line.split("\t")
+            tokens[tagField] = labels[y]
+            print "\t".join(tokens),
         sys.exit()
 
     # training
@@ -445,9 +454,10 @@ if __name__=="__main__":
                          epochs=args.epochs,
                          sqr_norm_lim=sqr_norm_lim)
         print "cv: %d, perf: %f" % (i, perf)
+        # save model
+        if i == 0 or perf > max(results):
+            with open(model, "wb") as mfile:
+                cnn.save(mfile)
+                pickle.dump((word_index, max_l, pad), mfile)
         results.append(perf)  
     print "Avg. accuracy: %.4f" % np.mean(results)
-    # save model
-    with open(model, "wb") as mfile:
-        cnn.save(mfile)
-        pickle.dump((word_index, max_l, pad), mfile)

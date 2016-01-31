@@ -7,6 +7,7 @@ CORPUS=mr
 
 ifeq ($(CORPUS), semeval15)
 DATA=data/semeval15-B-train.tsv
+TEST=-B-test
 CLEAN = 0
 else
 ifeq ($(CORPUS), semeval)	# no neutral tweets
@@ -17,6 +18,8 @@ DATA=data/rt-polarity.tsv
 CLEAN = 1
 endif
 endif
+
+EVAL = /project/piqasso/QA/Tanl/src/tag/pwaeval.py -t 2
 
 all: $(CORPUS)$(MODE)-$(FILTERS)
 
@@ -46,3 +49,9 @@ EPOCHS = 25
 $(CORPUS)$(MODE)-$(FILTERS): $(CORPUS).data
 	THEANO_FLAGS=mode=FAST_RUN,device=cpu,openmp=True,floatX=float32 ./conv_net_sentence.py -data $< $(MODE) -filters $(FILTERS) -dropout $(DROPOUT) \
 	-epochs $(EPOCHS) -train $@ > $@.out 2>&1
+
+$(CORPUS)$(TEST)$(MODE)-$(FILTERS).tsv: $(CORPUS)$(MODE)-$(FILTERS) data/$(CORPUS)$(TEST).tsv
+	./conv_net_sentence.py $^ > $@
+
+$(CORPUS)$(TEST)$(MODE)-$(FILTERS).eval: data/$(CORPUS)$(TEST).tsv $(CORPUS)$(TEST)$(MODE)-$(FILTERS).tsv
+	$(EVAL) $^ > $@

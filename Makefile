@@ -46,9 +46,10 @@ FILTERS=7,7,7
 DROPOUT = 0.5
 EPOCHS = 25
 
-$(CORPUS)$(MODE)-$(FILTERS): $(CORPUS).data
-	THEANO_FLAGS=mode=FAST_RUN,device=cpu,openmp=True,floatX=float32 ./conv_net_sentence.py -data $< $(MODE) -filters $(FILTERS) -dropout $(DROPOUT) \
-	-epochs $(EPOCHS) -train $@ > $@.out 2>&1
+$(CORPUS)$(MODE)-$(FILTERS): $(DATA) $(GOOGLENEWS)
+	THEANO_FLAGS=mode=FAST_RUN,device=cpu,openmp=True,floatX=float32 ./conv_net_sentence.py \
+	-vectors $(GOOGLENEWS) $(MODE) -filters $(FILTERS) -dropout $(DROPOUT) \
+	-epochs $(EPOCHS) -train $@ $< > $@.out 2>&1
 
 $(CORPUS)$(TEST)$(MODE)-$(FILTERS).tsv: $(CORPUS)$(MODE)-$(FILTERS) data/$(CORPUS)$(TEST).tsv
 	./conv_net_sentence.py $^ > $@

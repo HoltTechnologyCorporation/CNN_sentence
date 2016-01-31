@@ -114,29 +114,26 @@ def tokenize_sst(string):
     string = re.sub(r"\s{2,}", " ", string)    
     return string.strip().lower()
 
-if __name__=="__main__":    
-    w2v_file = sys.argv[1]     
-    train_file = sys.argv[2]    # Attardi
-    clean = int(sys.argv[3])    # Attardi
+def process_data(train_file, clean, w2v_file=None):
     np.random.seed(345)         # for replicability
     print "loading data...",        
-    revs, vocab = build_data_cv(train_file, cv=10, clean_string=clean)
-    max_l = max(x["num_words"] for x in revs)
+    sents, vocab = build_data_cv(train_file, cv=10, clean_string=clean)
+    max_l = max(x["num_words"] for x in sents)
     print "data loaded!"
-    print "number of sentences: " + str(len(revs))
+    print "number of sentences: " + str(len(sents))
     print "vocab size: " + str(len(vocab))
     print "max sentence length: " + str(max_l)
-    print "loading word2vec vectors...",
-    w2v = load_bin_vec(w2v_file, vocab)
-    print "word2vec loaded!"
-    print "num words already in word2vec: " + str(len(w2v))
-    add_unknown_words(w2v, vocab)
-    W, word_idx_map = get_W(w2v)
-    rand_vecs = {}
-    add_unknown_words(rand_vecs, vocab)
-    W2, _ = get_W(rand_vecs)
-    #pickle.dump([revs, W, W2, word_idx_map, vocab], open("mr.p", "wb"))
-    file_out = sys.argv[4]      # Attardi
-    pickle.dump([revs, W, W2, word_idx_map, vocab], open(file_out, "wb"))
-    print "dataset created!"
+    if w2v_file:
+        print "loading word2vec vectors...",
+        w2v = load_bin_vec(w2v_file, vocab)
+        print "word2vec loaded!"
+        print "num words already in word2vec: " + str(len(w2v))
+        add_unknown_words(w2v, vocab)
+        W, word_idx_map = get_W(w2v)
+    else:
+        rand_vecs = {}
+        add_unknown_words(rand_vecs, vocab)
+        W, word_idx_map = get_W(rand_vecs)
+    return sents, W, word_idx_map, vocab
+
 

@@ -1,10 +1,10 @@
 ## Convolutional Neural Networks for Sentence Classification
 
-Fork from https://github.com/yoonkim/CNN_sentence.git
+Fork by Giuseppe Attardi from https://github.com/yoonkim/CNN_sentence.git
+that allows saving a model and using it for classifying tweets.
 
-Code for the paper [Convolutional Neural Networks for Sentence Classification](http://arxiv.org/abs/1408.5882) (EMNLP 2014).
-
-Runs the model on Pang and Lee's movie review dataset (MR in the paper).
+The original code implements the technique described in the paper:
+[Convolutional Neural Networks for Sentence Classification](http://arxiv.org/abs/1408.5882) (EMNLP 2014).
 Please cite the original paper when using the data.
 
 ### Requirements
@@ -16,25 +16,28 @@ https://code.google.com/p/word2vec/
 
 ### Invocation
 ```
-usage: conv_net_sentence.py [-h] [-train] [-static] [-vectors VEXCTORS] [-filters FILTERS]
+usage: conv_net_sentence.py [-h] [-train] [-static] [-vectors VECTORS] [-filters FILTERS]
                             [-clean] [-dropout DROPOUT] [-epochs EPOCHS]
+                            [-tagField TAGFIELD] [-textField TEXTFIELD]
                             model input
 
 CNN sentence classifier.
 
 positional arguments:
-  model             model file (default mr)
-  input             train/test file in SemEval twitter format
+  model                 model file (default mr)
+  input                 train/test file in SemEval twitter format
 
 optional arguments:
-  -h, --help        show this help message and exit
-  -train            train model
-  -static           static or nonstatic
-  -vectors VECTORS  wor2vec embeddings file (random values if missing)
-  -filters FILTERS  n[,n]* (default 3,4,5)
-  -clean            tokenize text
-  -dropout DROPOUT  dropout probability (default 0.5)
-  -epochs EPOCHS    training iterations (default 25)
+  -h, --help            show this help message and exit
+  -train                train model
+  -static               static or nonstatic
+  -clean                tokenize text
+  -filters FILTERS      n[,n]* (default 3,4,5)
+  -vectors VECTORS      word2vec embeddings file (random values if missing)
+  -dropout DROPOUT      dropout probability (default 0.5)
+  -epochs EPOCHS        training iterations (default 25)
+  -tagField TAGFIELD    label field in files (default 1)
+  -textField TEXTFIELD  text field in files (default 2)
 ```
 
 VECTORS is the word2vec binary file (e.g. `GoogleNews-vectors-negative300.bin` file),

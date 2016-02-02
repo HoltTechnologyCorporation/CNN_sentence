@@ -22,11 +22,11 @@ def get_idx_from_sent(sent, word_index, max_l, pad):
     """
     Transforms sentence into a list of indices. Pad with zeroes.
     Drop words non in word_index. Attardi.
-    :param mak_l: max sentence length
+    :param max_l: max sentence length
     :param pad: pad length
     """
-    x = [0] * pad               # left padding
-    words = sent.split()
+    x = [0] * pad                # left padding
+    words = sent.split()[:max_l] # truncate words from test set
     for word in words:
         if word in word_index: # FIXME: skips unknown words
             x.append(word_index[word])
@@ -57,7 +57,7 @@ def make_idx_data_cv(revs, word_index, cv, max_l, pad):
   
 
 def read_corpus(filename, word_index, max_l, pad=2, clean_string=False,
-                tagField=2, textField=3):
+                textField=3):
     test = []
     with open(filename) as f:
         for line in f:

@@ -522,6 +522,7 @@ class ConvNet(MLPDropout):
         lr_decay = adadelta decay parameter
         """    
 
+        # same as using the combination softmax_cross_entropy_with_logits in tf
         cost = self.negative_log_likelihood(self.y) 
         dropout_cost = self.dropout_negative_log_likelihood(self.y)           
         # adadelta upgrades: dict of variable:delta

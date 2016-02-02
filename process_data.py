@@ -5,14 +5,12 @@ import cPickle as pickle
 from collections import defaultdict
 import sys, re
 
-tagField = 2
-textField = 3
 label = {'negative': 0,
          'positive': 1,
          'neutral': 2
          }
 
-def build_data_cv(train_file, cv=10, clean_string=True):
+def build_data_cv(train_file, cv=10, clean_string=True, tagField=1, textField=2):
     """
     Loads data and split into 10 folds.
     :return: sents (with class and split properties), word doc freq.
@@ -114,10 +112,11 @@ def tokenize_sst(string):
     string = re.sub(r"\s{2,}", " ", string)    
     return string.strip().lower()
 
-def process_data(train_file, clean, w2v_file=None):
+def process_data(train_file, clean, w2v_file=None, tagField=1, textField=2):
     np.random.seed(345)         # for replicability
     print "loading data...",        
-    sents, vocab = build_data_cv(train_file, cv=10, clean_string=clean)
+    sents, vocab = build_data_cv(train_file, cv=10, clean_string=clean,
+                                 tagField=tagField, textField=textField)
     max_l = max(x["num_words"] for x in sents)
     print "data loaded!"
     print "number of sentences: " + str(len(sents))

@@ -1,22 +1,25 @@
 
 GOOGLENEWS=/project/piqasso/Collection/WordEmbeddings/GoogleNews-vectors-negative300.bin
 
+CORPUS=semeval16
 #CORPUS=semeval15
 #CORPUS=semeval
-CORPUS=mr
+#CORPUS=mr
 
-ifeq ($(CORPUS), semeval15)
+ifeq ($(CORPUS), semeval16)
+DATA=data/semeval16-A-train.tsv
+TEST=-A-test
+CLEAN = 0
+else ifeq ($(CORPUS), semeval15)
 DATA=data/semeval15-B-train.tsv
 TEST=-B-test
 CLEAN = 0
-else
-ifeq ($(CORPUS), semeval)	# no neutral tweets
+else ifeq ($(CORPUS), semeval)	# no neutral tweets
 DATA=data/semeval.tsv
 CLEAN = 0
 else
 DATA=data/rt-polarity.tsv
 CLEAN = 1
-endif
 endif
 
 EVAL = /project/piqasso/QA/Tanl/src/tag/pwaeval.py -t 2

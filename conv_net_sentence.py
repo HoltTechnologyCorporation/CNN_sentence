@@ -93,6 +93,10 @@ if __name__=="__main__":
                         help='dropout probability (default %(default)s)')
     parser.add_argument('-epochs', type=int, default=25,
                         help='training iterations (default %(default)s)')
+    parser.add_argument('-tagField', type=int, default=1,
+                        help='label field in files (default %(default)s)')
+    parser.add_argument('-textField', type=int, default=2,
+                        help='text field in files (default %(default)s)')
 
     args = parser.parse_args()
 
@@ -104,8 +108,8 @@ if __name__=="__main__":
 
         cnn.activations = [Iden] #TODO: save it in the model
 
-        tagField = 2
-        textField = 3
+        tagField = args.tagField
+        textField = args.textField
         test_set_x = read_corpus(args.input, word_index, max_l, pad, textField=textField)
         test_set_y_pred = cnn.predict(test_set_x)
         test_model = theano.function([cnn.x], test_set_y_pred, allow_input_downcast=True)
@@ -120,7 +124,8 @@ if __name__=="__main__":
 
     # training
     print "loading data...",
-    sents, U, word_index, vocab = process_data(args.input, args.clean, args.vectors)
+    sents, U, word_index, vocab = process_data(args.input, args.clean, args.vectors,
+                                               args.tagField, args.textField)
 
     # sents is a list of entries, where each entry is a dict:
     # {"y": 0/1, "text": , "num_words": , "split": cv fold}

@@ -1,9 +1,14 @@
 ## Convolutional Neural Networks for Sentence Classification
 
-Fork by Giuseppe Attardi from https://github.com/yoonkim/CNN_sentence.git
-that allows saving a model and using it for classifying tweets.
+Fork by Giuseppe Attardi from https://github.com/yoonkim/CNN_sentence.git.
+Differences with the original:
+- multiclass classification
+- model saving and loading for classifying files, e.g. tweets
+- configurable parameters
+- integrated program, without a separate preprocessing stage
+- input in a single file, annotated in the format used in SemEval Twitter Analysis tasks.
 
-The original code implements the technique described in the paper:
+The original code by Kim Yoon implements the technique described in the paper:
 [Convolutional Neural Networks for Sentence Classification](http://arxiv.org/abs/1408.5882) (EMNLP 2014).
 Please cite the original paper when using the data.
 

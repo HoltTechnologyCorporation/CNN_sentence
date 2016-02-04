@@ -6,11 +6,11 @@ Differences with the original:
 - model saving and loading for classifying files, e.g. tweets
 - configurable parameters
 - integrated program, without a separate preprocessing stage
-- input in a single file, annotated in the format used in SemEval Twitter Analysis tasks.
+- input in a single file, annotated in the format used in the SemEval Twitter Sentiment Analysis tasks.
 
 The original code by Kim Yoon implements the technique described in the paper:
 [Convolutional Neural Networks for Sentence Classification](http://arxiv.org/abs/1408.5882) (EMNLP 2014).
-Please cite the original paper when using the data.
+Please cite both this page and the original paper when using the program.
 
 ### Requirements
 Code is written in Python (2.7) and requires Theano (0.7).

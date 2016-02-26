@@ -44,14 +44,12 @@ def get_W(word_vecs, k=300):
     word_idx_map = dict()
     W = np.zeros(shape=(vocab_size+1, k), dtype='float32')            
     W[0] = np.zeros(k, dtype='float32')
-    i = 1
-    for word in word_vecs:
+    for i, word in enumerate(word_vecs):
         W[i] = word_vecs[word]
         word_idx_map[word] = i
-        i += 1
     return W, word_idx_map
 
-def load_bin_vec(fname, vocab):
+def load_word2vec(fname, vocab, binary=True):
     """
     Loads 300x1 word vecs from Google (Mikolov) word2vec
     """
@@ -59,20 +57,26 @@ def load_bin_vec(fname, vocab):
     with open(fname, "rb") as f:
         header = f.readline()
         vocab_size, layer1_size = map(int, header.split())
-        binary_len = np.dtype('float32').itemsize * layer1_size
-        for line in xrange(vocab_size):
-            word = []
-            while True:
-                ch = f.read(1)
-                if ch == ' ':
-                    word = ''.join(word)
-                    break
-                if ch != '\n':
-                    word.append(ch)   
-            if word in vocab:
-               word_vecs[word] = np.fromstring(f.read(binary_len), dtype='float32')  
-            else:
-                f.read(binary_len)
+        if binary:
+            binary_len = np.dtype('float32').itemsize * layer1_size
+            for line in xrange(vocab_size):
+                word = []
+                while True:
+                    ch = f.read(1)
+                    if ch == ' ':
+                        word = ''.join(word)
+                        break
+                    if ch != '\n':
+                        word.append(ch)   
+                if word in vocab:
+                   word_vecs[word] = np.fromstring(f.read(binary_len), dtype='float32')  
+                else:
+                    f.read(binary_len)
+        else:                   # text
+            for line in f:
+                items = line.split()
+                word = unicode(items[0], 'utf-8')
+                word_vecs[word] = np.array(map(float, items[1:]))
     return word_vecs
 
 def add_unknown_words(word_vecs, vocab, min_df=1, k=300):
@@ -112,7 +116,11 @@ def tokenize_sst(string):
     string = re.sub(r"\s{2,}", " ", string)    
     return string.strip().lower()
 
-def process_data(train_file, clean, w2v_file=None, tagField=1, textField=2):
+def process_data(train_file, clean, w2v_file=None,
+                 tagField=1, textField=2, k=300):
+    """
+    :param k: embeddigs size (300 for GoogleNews)
+    """
     np.random.seed(345)         # for replicability
     print "loading data...",        
     sents, vocab = build_data_cv(train_file, cv=10, clean_string=clean,
@@ -124,15 +132,16 @@ def process_data(train_file, clean, w2v_file=None, tagField=1, textField=2):
     print "max sentence length: " + str(max_l)
     if w2v_file:
         print "loading word2vec vectors...",
-        w2v = load_bin_vec(w2v_file, vocab)
-        print "word2vec loaded!"
-        print "num words already in word2vec: " + str(len(w2v))
-        add_unknown_words(w2v, vocab)
-        W, word_idx_map = get_W(w2v)
+        w2v = load_word2vec(w2v_file, vocab, w2v_file.endswith('.bin'))
+        # get embeddings size:
+        k = len(w2v.itervalues().next())
+        print "word2vec loaded (%d, %d)" % (len(w2v), k)
+        add_unknown_words(w2v, vocab, k)
+        W, word_idx_map = get_W(w2v, k)
     else:
         rand_vecs = {}
         add_unknown_words(rand_vecs, vocab)
-        W, word_idx_map = get_W(rand_vecs)
+        W, word_idx_map = get_W(rand_vecs, k)
     return sents, W, word_idx_map, vocab
 
 

@@ -36,12 +36,13 @@ def build_data_cv(train_file, cv=10, clean_string=True, tagField=1, textField=2)
             revs.append(datum)
     return revs, vocab
 
-def get_W(word_vecs, k=300):
+def get_W(word_vecs):
     """
     Get word matrix and word index dict. W[i] is the vector for word indexed by i
     """
     vocab_size = len(word_vecs)
     word_idx_map = dict()
+    k = len(word_vecs.itervalues().next())
     W = np.zeros(shape=(vocab_size+1, k), dtype='float32')            
     W[0] = np.zeros(k, dtype='float32')
     for i, word in enumerate(word_vecs):
@@ -83,10 +84,11 @@ def add_unknown_words(word_vecs, vocab, min_df=1, k=300):
     """
     For words that occur in at least min_df documents, create a separate word vector.    
     0.25 is chosen so the unknown vectors have (approximately) same variance as pre-trained ones
+    :param k: size of embedding vectors.
     """
     for word in vocab:
         if word not in word_vecs and vocab[word] >= min_df:
-            word_vecs[word] = np.random.uniform(-0.25,0.25,k)  
+            word_vecs[word] = np.random.uniform(-0.25, 0.25, k)  
 
 def tokenize(string, no_lower=False):
     """
@@ -137,11 +139,11 @@ def process_data(train_file, clean, w2v_file=None,
         k = len(w2v.itervalues().next())
         print "word2vec loaded (%d, %d)" % (len(w2v), k)
         add_unknown_words(w2v, vocab, k)
-        W, word_idx_map = get_W(w2v, k)
+        W, word_idx_map = get_W(w2v)
     else:
         rand_vecs = {}
         add_unknown_words(rand_vecs, vocab)
-        W, word_idx_map = get_W(rand_vecs, k)
+        W, word_idx_map = get_W(rand_vecs)
     return sents, W, word_idx_map, vocab
 
 

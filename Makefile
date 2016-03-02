@@ -1,5 +1,6 @@
 
 GOOGLENEWS=/project/piqasso/Collection/WordEmbeddings/GoogleNews-vectors-negative300.bin
+TWEETS=../Convolutional/uvectors.300.5.50.w2v 
 SENTWEETS=../Convolutional/senti-vectors.100.w2v
 
 CORPUS=semeval16
@@ -23,13 +24,13 @@ TAG=2
 endif
 
 # Sentiment specific Word Embeddings
-SWE=-swe
+#SWE=-swe
 
 # ----------------------------------------------------------------------
 # Scoring
 EVAL = ./pwaeval.py -t $(TAG)
 SCORER15 = /project/piqasso/Collection/SemEval/2015/task-10/scoring/score-semeval2015-task10-subtaskB.pl
-SCORER16 = /project/piqasso/Collection/SemEval/2016/task-4/SemEval2016-task4-scorers-v2.2/score-semeval2016-task4-subtaskA.pl
+SCORER16 = ./score-semeval2016-task4-subtaskA.pl
 
 # ----------------------------------------------------------------------
 # Targets
@@ -51,7 +52,8 @@ EPOCHS = 25
 ifeq ($(SWE), -swe)
 EMBEDDINGS = $(SENTWEETS)
 else
-EMBEDDINGS = $(GOOGLENEWS)
+#EMBEDDINGS = $(GOOGLENEWS)
+EMBEDDINGS = $(TWEETS)
 endif
 
 $(CORPUS)$(MODE)$(SWE)-$(FILTERS): $(DATA) $(EMBEDDINGS)
@@ -75,6 +77,8 @@ else
 # 2016 scorer
 $(CORPUS)$(TEST)$(MODE)$(SWE)-$(FILTERS).scored: SemEval2016_task4_subtaskA_test_gold.txt $(CORPUS)$(TEST)$(MODE)$(SWE)-$(FILTERS).tsv
 	@cut -f1,3 $< > $<.tmp
-	$(SCORER16) $<.tmp $(word 2,$^) $@p
-	@rm $<.tmp
+	f=$(basename $(word 2,$^)); \
+	paste $<.tmp $(word 2,$^) | cut -f1,4 > $$f; \
+	$(SCORER16) $<.tmp $$f; \
+	rm $<.tmp $$f
 endif

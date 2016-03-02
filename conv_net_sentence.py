@@ -104,7 +104,7 @@ if __name__=="__main__":
         # test
         with open(args.model) as mfile:
             cnn = ConvNet.load(mfile)
-            word_index, max_l, pad = pickle.load(mfile)
+            word_index, labels, max_l, pad = pickle.load(mfile)
 
         cnn.activations = [Iden] #TODO: save it in the model
 
@@ -115,7 +115,6 @@ if __name__=="__main__":
         test_model = theano.function([cnn.x], test_set_y_pred, allow_input_downcast=True)
         results = test_model(test_set_x)
         # invert indices (from process_data.py)
-        labels = ['negative', 'positive', 'neutral']
         for line, y in zip(open(args.input), results):
             tokens = line.split("\t")
             tokens[tagField] = labels[y]
@@ -123,14 +122,13 @@ if __name__=="__main__":
         sys.exit()
 
     # training
-    print "loading data...",
-    sents, U, word_index, vocab = process_data(args.input, args.clean, args.vectors,
-                                               args.tagField, args.textField)
+    sents, U, word_index, vocab, labels = process_data(args.input, args.clean,
+                                                       args.vectors,
+                                                       args.tagField, args.textField)
 
     # sents is a list of entries, where each entry is a dict:
     # {"y": 0/1, "text": , "num_words": , "split": cv fold}
     # vocab: dict of word doc freq
-    print "data loaded!"
     filter_hs = [int(x) for x in args.filters.split(',')]
     model = args.model
     if args.static:
@@ -197,6 +195,6 @@ if __name__=="__main__":
         if i == 0 or perf > max(results):
             with open(model, "wb") as mfile:
                 cnn.save(mfile)
-                pickle.dump((word_index, max_l, pad), mfile)
+                pickle.dump((word_index, labels, max_l, pad), mfile)
         results.append(perf)  
     print "Avg. accuracy: %.4f" % np.mean(results)

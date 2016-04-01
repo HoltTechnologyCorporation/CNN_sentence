@@ -6,14 +6,15 @@ from collections import defaultdict
 import sys, re
 
 
-def build_data_cv(train_file, cv=10, clean_string=True, tagField=1, textField=2):
+def build_data(train_file, clean_string=True, tagField=1, textField=2):
     """
-    Loads data and split into 10 folds.
-    :return: sents (with class and split properties), word doc freq, list of labels.
+    Loads data.
+    :param train_file: filename containing labeled sentences in TSV format.
+    :return: sents (paired with labels), word doc freq, list of labels.
     """
-    revs = []
-    vocab = defaultdict(int)
+    sents = []
     tags = {}
+    vocab = defaultdict(int)
     with open(train_file, "rb") as f:
         for line in f:       
             fields = line.strip().split("\t")
@@ -28,26 +29,25 @@ def build_data_cv(train_file, cv=10, clean_string=True, tagField=1, textField=2)
             words = clean_text.split()
             for word in set(words):
                 vocab[word] += 1
-            datum = {"y": tags[tag],
-                     "text": clean_text,
-                     "num_words": len(words),
-                     "split": np.random.randint(0, cv)}
-            revs.append(datum)
+            pair = (words, tags[tag])
+            sents.append(pair)
     labels = [0] * len(tags)
     for tag,i in tags.iteritems():
         labels[i] = tag
-    return revs, vocab, labels
+    return sents, vocab, labels
 
 
 def get_W(word_vecs):
     """
-    Get word matrix and word index dict. W[i] is the vector for word indexed by i
+    Get word matrix and word index dict. W[i] is the vector for word of index i.
     """
     vocab_size = len(word_vecs)
-    word_idx_map = dict()
+    word_idx_map = {}
     k = len(word_vecs.itervalues().next())
+    # CHECKME: why +1?
     W = np.zeros(shape=(vocab_size+1, k), dtype='float32')            
-    W[0] = np.zeros(k, dtype='float32')
+    #W[0] = np.zeros(k, dtype='float32') # overridden below
+    #W = np.zeros(shape=(vocab_size, k), dtype='float32')            
     for i, word in enumerate(word_vecs):
         W[i] = word_vecs[word]
         word_idx_map[word] = i
@@ -56,7 +56,7 @@ def get_W(word_vecs):
 
 def load_word2vec(fname, vocab, binary=True):
     """
-    Loads 300x1 word vecs from Google (Mikolov) word2vec
+    Loads word vectors from file in word2vec format
     """
     word_vecs = {}
     with open(fname, "rb") as f:
@@ -96,46 +96,19 @@ def add_unknown_words(word_vecs, vocab, k, min_df=1):
             word_vecs[word] = np.random.uniform(-0.25, 0.25, k)  
 
 
-def tokenize(string, no_lower=False):
-    """
-    Tokenization/string cleaning for all datasets except for SST.
-    Lower case except when no_lower is Ytur
-    """
-    string = re.sub(r"[^A-Za-z0-9(),!?\'\`]", " ", string)     
-    string = re.sub(r"\'s", " \'s", string) 
-    string = re.sub(r"\'ve", " \'ve", string) 
-    string = re.sub(r"n\'t", " n\'t", string) 
-    string = re.sub(r"\'re", " \'re", string) 
-    string = re.sub(r"\'d", " \'d", string) 
-    string = re.sub(r"\'ll", " \'ll", string) 
-    string = re.sub(r",", " , ", string) 
-    string = re.sub(r"!", " ! ", string) 
-    string = re.sub(r"\(", " \( ", string) 
-    string = re.sub(r"\)", " \) ", string) 
-    string = re.sub(r"\?", " \? ", string) 
-    string = re.sub(r"\s{2,}", " ", string)    
-    return string.strip() if no_lower else string.strip().lower()
-
-
-def tokenize_sst(string):
-    """
-    Tokenization/string cleaning for the SST dataset
-    """
-    string = re.sub(r"[^A-Za-z0-9(),!?\'\`]", " ", string)   
-    string = re.sub(r"\s{2,}", " ", string)    
-    return string.strip().lower()
-
-
 def process_data(train_file, clean, w2v_file=None,
                  tagField=1, textField=2, k=300):
     """
     :param k: embeddigs size (300 for GoogleNews)
+    :param cv: cross-validation folds, -1 for none
+    :return: sents (paired with labels), vectors, word dictionary, vocabulary, list of labels.
     """
     np.random.seed(345)         # for replicability
     print "loading data...",
-    sents, vocab, labels = build_data_cv(train_file, cv=10, clean_string=clean,
-                                         tagField=tagField, textField=textField)
-    max_l = max(x["num_words"] for x in sents)
+    sents, vocab, labels = build_data(train_file,
+                                      clean_string=clean,
+                                      tagField=tagField, textField=textField)
+    max_l = max(len(words) for words,l in sents)
     print "data loaded!"
     print "number of sentences: " + str(len(sents))
     print "vocab size: " + str(len(vocab))

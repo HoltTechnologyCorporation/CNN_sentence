@@ -10,27 +10,28 @@ Much of the code is modified from
 """
 
 import numpy as np
-import theano.tensor.shared_randomstreams
 import theano
 import theano.tensor as T
 from theano.tensor.signal import downsample
-from theano.tensor.nnet import conv
+from theano.tensor.nnet import conv2d
+from theano.tensor.shared_randomstreams import RandomStreams
 from collections import OrderedDict
 import time
 import cPickle as pickle
 
+# ----------------------------------------------------------------------
+# Activation functions
+
 def ReLU(x):
-    y = T.maximum(0.0, x)
-    return(y)
-def Sigmoid(x):
-    y = T.nnet.sigmoid(x)
-    return(y)
-def Tanh(x):
-    y = T.tanh(x)
-    return(y)
+    return T.maximum(0.0, x)
+
+
+# def Sigmoid(x):
+#     return T.nnet.sigmoid(x)
+
+
 def Iden(x):
-    y = x
-    return(y)
+    return x
         
 
 # ----------------------------------------------------------------------
@@ -88,7 +89,7 @@ class DropoutHiddenLayer(HiddenLayer):
 def _dropout_from_layer(rng, layer, p):
     """p is the probablity of dropping a unit
 """
-    srng = theano.tensor.shared_randomstreams.RandomStreams(rng.randint(999999))
+    srng = RandomStreams(rng.randint(999999))
     # p=1-p because 1's indicate keep and p is prob of dropping
     mask = srng.binomial(n=1, p=1-p, size=layer.shape)
     # The cast is important because
@@ -102,9 +103,7 @@ class MLPDropout(object):
     """A multilayer perceptron with dropout"""
 
 
-    def __init__(self,rng,input,layer_sizes,dropout_rates,activations,use_bias=True):
-
-        #rectified_linear_activation = lambda x: T.maximum(0.0, x)
+    def __init__(self, rng, input, layer_sizes, dropout_rates, activations, use_bias=True):
 
         # Set up all the hidden layers
         self.weight_matrix_sizes = zip(layer_sizes, layer_sizes[1:])
@@ -112,16 +111,15 @@ class MLPDropout(object):
         self.dropout_layers = []
         self.activations = activations
         next_layer_input = input
-        #first_layer = True
         # dropout the input
         next_dropout_layer_input = _dropout_from_layer(rng, input, p=dropout_rates[0])
-        layer_counter = 0
+        layer_index = 0
         for n_in, n_out in self.weight_matrix_sizes[:-1]:
             next_dropout_layer = DropoutHiddenLayer(rng=rng,
                     input=next_dropout_layer_input,
-                    activation=activations[layer_counter],
+                    activation=activations[layer_index],
                     n_in=n_in, n_out=n_out, use_bias=use_bias,
-                    dropout_rate=dropout_rates[layer_counter])
+                    dropout_rate=dropout_rates[layer_index])
             self.dropout_layers.append(next_dropout_layer)
             next_dropout_layer_input = next_dropout_layer.output
 
@@ -129,22 +127,20 @@ class MLPDropout(object):
             # path through the graph.
             next_layer = HiddenLayer(rng=rng,
                     input=next_layer_input,
-                    activation=activations[layer_counter],
+                    activation=activations[layer_index],
                     # scale the weight matrix W with (1-p)
-                    W=next_dropout_layer.W * (1 - dropout_rates[layer_counter]),
+                    W=next_dropout_layer.W * (1 - dropout_rates[layer_index]),
                     b=next_dropout_layer.b,
                     n_in=n_in, n_out=n_out,
                     use_bias=use_bias)
             self.layers.append(next_layer)
             next_layer_input = next_layer.output
-            #first_layer = False
-            layer_counter += 1
+            layer_index += 1
         
         # Set up the output layer
         n_in, n_out = self.weight_matrix_sizes[-1]
-        dropout_output_layer = LogisticRegression(
-                input=next_dropout_layer_input,
-                n_in=n_in, n_out=n_out)
+        dropout_output_layer = LogisticRegression(input=next_dropout_layer_input,
+                                                  n_in=n_in, n_out=n_out)
         self.dropout_layers.append(dropout_output_layer)
 
         # Again, reuse paramters in the dropout output.
@@ -155,6 +151,9 @@ class MLPDropout(object):
             b=dropout_output_layer.b,
             n_in=n_in, n_out=n_out)
         self.layers.append(output_layer)
+
+        # output layer activation is softmax
+        self.activations.append(T.nnet.softmax)
 
         # Use the negative log likelihood of the logistic regression layer as
         # the objective.
@@ -167,25 +166,16 @@ class MLPDropout(object):
         # Grab all the parameters together.
         self.params = [ param for layer in self.dropout_layers for param in layer.params ]
 
-    def predict(self, new_data):
-        next_layer_input = new_data
+
+    def predict(self, input):
+        """
+        :return: symbolic expression to predict results for :param input:
+        """
         for i,layer in enumerate(self.layers):
-            if i<len(self.layers)-1:
-                next_layer_input = self.activations[i](T.dot(next_layer_input,layer.W) + layer.b)
-            else:
-                p_y_given_x = T.nnet.softmax(T.dot(next_layer_input, layer.W) + layer.b)
-        y_pred = T.argmax(p_y_given_x, axis=1)
+            input = self.activations[i](T.dot(input, layer.W) + layer.b)
+        y_pred = T.argmax(input, axis=1)
         return y_pred
 
-    def predict_p(self, new_data):
-        next_layer_input = new_data
-        for i,layer in enumerate(self.layers):
-            if i<len(self.layers)-1:
-                next_layer_input = self.activations[i](T.dot(next_layer_input,layer.W) + layer.b)
-            else:
-                p_y_given_x = T.nnet.softmax(T.dot(next_layer_input, layer.W) + layer.b)
-        return p_y_given_x
-        
 
 # ----------------------------------------------------------------------
 class MLP(object):
@@ -265,27 +255,26 @@ class LogisticRegression(object):
     def __init__(self, input, n_in, n_out, W=None, b=None):
         """ Initialize the parameters of the logistic regression
 
-    :type input: theano.tensor.TensorType
-    :param input: symbolic variable that describes the input of the
-    architecture (one minibatch)
+        :type input: theano.tensor.TensorType
+        :param input: symbolic variable that describes the input of the
+        architecture (one minibatch)
     
-    :type n_in: int
-    :param n_in: number of input units, the dimension of the space in
-    which the datapoints lie
+        :type n_in: int
+        :param n_in: number of input units, the dimension of the space in
+        which the datapoints lie
     
-    :type n_out: int
-    :param n_out: number of output units, the dimension of the space in
-    which the labels lie
-    
-    """
+        :type n_out: int
+        :param n_out: number of output units, the dimension of the space in
+        which the labels lie
+        
+        """
 
         # initialize with 0 the weights W as a matrix of shape (n_in, n_out)
         if W is None:
             self.W = theano.shared(
                     value=np.zeros((n_in, n_out), dtype=theano.config.floatX),
                     name='W')
-            # self.W = T.fmatrix(
-            #         name='W')
+            # self.W = T.fmatrix(name='W')
         else:
             self.W = W
 
@@ -397,19 +386,19 @@ class LeNetConvPoolLayer(object):
         # inputs to each hidden unit
         fan_in = np.prod(filter_shape[1:])
         # each unit in the lower layer receives a gradient from:
-        # "num output feature maps * filter height * filter width" /
-        #   pooling size
-        fan_out = (filter_shape[0] * np.prod(filter_shape[2:]) /np.prod(poolsize))
+        # (num output feature maps * filter height * filter width) / pooling size
+        fan_out = (filter_shape[0] * np.prod(filter_shape[2:]) // np.prod(poolsize)) # int div.
         # initialize weights with random weights
         if self.non_linear == "none" or self.non_linear == "relu":
             self.W = theano.shared(np.asarray(rng.uniform(low=-0.01,high=0.01,size=filter_shape), 
-                                                dtype=theano.config.floatX),borrow=True,name="W_conv")
+                                              dtype=theano.config.floatX),borrow=True,name="W_conv")
             # self.W = T.as_tensor_variable(np.asarray(rng.uniform(low=-0.01,high=0.01,size=filter_shape), 
             #                                     dtype=theano.config.floatX),name="W_conv")
         else:
             W_bound = np.sqrt(6. / (fan_in + fan_out))
             self.W = theano.shared(np.asarray(rng.uniform(low=-W_bound, high=W_bound, size=filter_shape),
-                dtype = theano.config.floatX),borrow=True,name="W_conv")   
+                                              dtype=theano.config.floatX),
+                                   borrow=True, name="W_conv")
             # self.W = T.as_tensor_variable(np.asarray(rng.uniform(low=-W_bound, high=W_bound, size=filter_shape),
             #     dtype = theano.config.floatX),name="W_conv")   
         b_values = np.zeros((filter_shape[0],), dtype=theano.config.floatX)
@@ -417,32 +406,40 @@ class LeNetConvPoolLayer(object):
         # self.b = T.as_tensor_variable(b_values, name="b_conv")
         
         # convolve input feature maps with filters
-        conv_out = conv.conv2d(input=input, filters=self.W,filter_shape=self.filter_shape, image_shape=self.image_shape)
+        conv_out = conv2d(input=input, filters=self.W, filter_shape=self.filter_shape,
+                          input_shape=self.image_shape)
+
+        # downsample each feature map individually, using maxpooling
+        pooled_out = downsample.max_pool_2d(input=conv_out, ds=self.poolsize, ignore_border=True)
+
+        # add the bias term. Since the bias is a vector (1D array), we first
+        # reshape it to a tensor of shape (1, n_filters, 1, 1). Each bias will
+        # thus be broadcasted across mini-batches and feature map
+        # width & heigh
         if self.non_linear == "tanh":
-            conv_out_tanh = T.tanh(conv_out + self.b.dimshuffle('x', 0, 'x', 'x'))
-            self.output = downsample.max_pool_2d(input=conv_out_tanh, ds=self.poolsize, ignore_border=True)
+            self.output = T.tanh(pooled_out + self.b.dimshuffle('x', 0, 'x', 'x'))
         elif self.non_linear == "relu":
-            conv_out_tanh = ReLU(conv_out + self.b.dimshuffle('x', 0, 'x', 'x'))
-            self.output = downsample.max_pool_2d(input=conv_out_tanh, ds=self.poolsize, ignore_border=True)
+            self.output = ReLU(pooled_out + self.b.dimshuffle('x', 0, 'x', 'x'))
         else:
-            pooled_out = downsample.max_pool_2d(input=conv_out, ds=self.poolsize, ignore_border=True)
             self.output = pooled_out + self.b.dimshuffle('x', 0, 'x', 'x')
         self.params = [self.W, self.b]
         
-    def predict(self, new_data, batch_size):
+    def predict(self, data, batch_size):
         """
-        predict for new data
+        :return: symbolic expression to predict results for :param data:
         """
-        img_shape = (batch_size, 1, self.image_shape[2], self.image_shape[3])
-        conv_out = conv.conv2d(input=new_data, filters=self.W, filter_shape=self.filter_shape, image_shape=img_shape)
+        input_shape = (batch_size, 1, self.image_shape[2], self.image_shape[3])
+        conv_out = conv2d(input=data, filters=self.W,
+                          filter_shape=self.filter_shape,
+                          input_shape=input_shape)
+
+        pooled_out = downsample.max_pool_2d(input=conv_out, ds=self.poolsize, ignore_border=True)
+
         if self.non_linear == "tanh":
-            conv_out_tanh = T.tanh(conv_out + self.b.dimshuffle('x', 0, 'x', 'x'))
-            output = downsample.max_pool_2d(input=conv_out_tanh, ds=self.poolsize, ignore_border=True)
-        if self.non_linear == "relu":
-            conv_out_tanh = ReLU(conv_out + self.b.dimshuffle('x', 0, 'x', 'x'))
-            output = downsample.max_pool_2d(input=conv_out_tanh, ds=self.poolsize, ignore_border=True)
+            output = T.tanh(pooled_out + self.b.dimshuffle('x', 0, 'x', 'x'))
+        elif self.non_linear == "relu":
+            output = ReLU(pooled_out + self.b.dimshuffle('x', 0, 'x', 'x'))
         else:
-            pooled_out = downsample.max_pool_2d(input=conv_out, ds=self.poolsize, ignore_border=True)
             output = pooled_out + self.b.dimshuffle('x', 0, 'x', 'x')
         return output
         
@@ -454,36 +451,40 @@ class ConvNet(MLPDropout):
     """
 
 
-    def __init__(self, U, height, width, filter_hs, conv_non_linear,
-                 hidden_units, batch_size, non_static, dropout_rates,
+    def __init__(self, U, height, width, filter_hs, conv_activation,
+                 feature_maps, output_units, batch_size, dropout_rates,
                  activations=[Iden]):
         """
-        height = sentence length (padded where necessary)
-        width = word vector length (300 for word2vec)
-        filter_hs = filter window sizes    
-        hidden_units = [x,y] x is the number of feature maps (per filter window), and y is the penultimate layer
+        :param U: word embeddings matrix
+        :param height: sentence length (padded where necessary)
+        :param width: word vector length (300 for word2vec)
+        :param filter_hs: filter window sizes    
+        :param conv_activation: activation functin for the convolutional layer
+        :param feature_maps: the size of feature maps (per filter window)
+        :param output_units: number of output variables
         """
         rng = np.random.RandomState(3435)
-        feature_maps = hidden_units[0]
         self.batch_size = batch_size
 
         # define model architecture
         self.index = T.lscalar()
-        self.x = T.matrix('x')   
-        self.y = T.ivector('y')
+        self.x = T.matrix('x')  # a minibatch of wprds
+        self.y = T.ivector('y') # corresponding outputs
         self.Words = theano.shared(value=U, name="Words")
+        # CHECKME: what for set_zero?
         zero_vec_tensor = T.vector()
         self.zero_vec = np.zeros(width)
-        # reset Words to 0?
+        # set to 0 Word[0]
         self.set_zero = theano.function([zero_vec_tensor],
-                                        updates=[(self.Words, T.set_subtensor(self.Words[0,:],
-                                                                         zero_vec_tensor))],
+                                        updates=[(self.Words,
+                                                  T.set_subtensor(self.Words[0,:],
+                                                                  zero_vec_tensor))],
                                         allow_input_downcast=True)
         # inputs to the ConvNet go to all convolutional filters:
         layer0_input = self.Words[T.cast(self.x.flatten(), dtype="int32")].reshape(
             (self.x.shape[0], 1, self.x.shape[1], self.Words.shape[1]))
         self.conv_layers = []
-        # outputs of convolutional filters
+        # outputs of the convolutional filters
         layer1_inputs = []
         image_shape = (batch_size, 1, height, width)
         filter_w = width    
@@ -494,13 +495,13 @@ class ConvNet(MLPDropout):
                                             image_shape=image_shape,
                                             filter_shape=filter_shape,
                                             poolsize=pool_size,
-                                            non_linear=conv_non_linear)
+                                            non_linear=conv_activation)
             layer1_input = conv_layer.output.flatten(2)
             self.conv_layers.append(conv_layer)
             layer1_inputs.append(layer1_input)
         # inputs to the MLP
         layer1_input = T.concatenate(layer1_inputs, 1)
-        layer_sizes = [feature_maps*len(filter_hs)] + hidden_units[1:]
+        layer_sizes = [feature_maps*len(filter_hs), output_units]
         super(ConvNet, self).__init__(rng, input=layer1_input,
                                       layer_sizes=layer_sizes,
                                       activations=activations,
@@ -509,18 +510,19 @@ class ConvNet(MLPDropout):
         # add parameters from convolutional layers
         for conv_layer in self.conv_layers:
             self.params += conv_layer.params
-        if non_static:
-            # if word vectors are allowed to change, add them as model parameters
-            self.params += [self.Words]
+        # add embeddings
+        self.params += [self.Words]
 
 
-    def train(self, train_set, test_set, shuffle_batch=True,
-              epochs=25, lr_decay=0.95, sqr_norm_lim=9):
+    def train(self, train_set, shuffle_batch=True,
+              epochs=25, lr_decay=0.95, sqr_norm_lim=9, save=lambda:0):
         """
         Train a simple conv net
-        sqr_norm_lim = s^2 in the paper
-        lr_decay = adadelta decay parameter
-        """    
+        :param train_set: list of word indices, last one is y.
+        :param lr_decay: adadelta decay parameter.
+        :param sqr_norm_lim: s^2 in the paper.
+        :param save: function for saving the model.
+        """
 
         # same as using the combination softmax_cross_entropy_with_logits in tf
         cost = self.negative_log_likelihood(self.y) 
@@ -531,7 +533,7 @@ class ConvNet(MLPDropout):
         # shuffle dataset and assign to mini batches.
         # if dataset size is not a multiple of batch size, replicate 
         # extra data (at random)
-        np.random.seed(3435)
+        np.random.seed(3435)    # DEBUG
         batch_size = self.batch_size
         if train_set.shape[0] % batch_size > 0:
             extra_data_num = batch_size - train_set.shape[0] % batch_size
@@ -542,31 +544,24 @@ class ConvNet(MLPDropout):
         else:
             new_data = train_set
         shuffled_data = np.random.permutation(new_data) # Attardi
-        n_batches = shuffled_data.shape[0]/batch_size
+        n_batches = shuffled_data.shape[0] // batch_size
 
-        # divide train set into 90% train, 10% validation sets
+        # divide train batches into 90% train, 10% validation batches
         n_train_batches = int(np.round(n_batches*0.9))
         n_val_batches = n_batches - n_train_batches
         train_set = shuffled_data[:n_train_batches*batch_size,:]
         val_set = shuffled_data[n_train_batches*batch_size:,:]     
 
+        # y are stored in train_set[:-1]
         train_set_x, train_set_y = shared_dataset(train_set[:,:-1], train_set[:,-1])
-        val_set_x, val_set_y = shared_dataset(val_set[:,:-1], val_set[:,-1])
-
         batch_start = self.index * batch_size
         batch_end = batch_start + batch_size
-        # compile Theano functions to get train/val/test errors
-        train_model = theano.function([self.index], cost, updates=grad_updates,
-                                      givens={
-                                          self.x: train_set_x[batch_start:batch_end],
-                                          self.y: train_set_y[batch_start:batch_end]},
-                                      allow_input_downcast = True)
-
-        val_model = theano.function([self.index], self.errors(self.y),
-                                    givens={
-                                        self.x: val_set_x[batch_start:batch_end],
-                                        self.y: val_set_y[batch_start:batch_end]},
-                                    allow_input_downcast=True)
+        # compile Theano functions to get train/val errors
+        train_function = theano.function([self.index], cost, updates=grad_updates,
+                                         givens={
+                                             self.x: train_set_x[batch_start:batch_end],
+                                             self.y: train_set_y[batch_start:batch_end]},
+                                         allow_input_downcast = True)
 
         # errors on train set
         train_error = theano.function([self.index], self.errors(self.y),
@@ -575,39 +570,41 @@ class ConvNet(MLPDropout):
                                           self.y: train_set_y[batch_start:batch_end]},
                                       allow_input_downcast=True)
 
-        test_set_x = test_set[:,:-1]
-        test_set_y = test_set[:,-1]
-        test_y_pred = self.predict(test_set_x)
-
-        test_error = T.mean(T.neq(test_y_pred, self.y))
-        test_model = theano.function([self.x, self.y], test_error, allow_input_downcast=True)
+        # errors on val set
+        val_set_x, val_set_y = shared_dataset(val_set[:,:-1], val_set[:,-1])
+        val_error = theano.function([self.index], self.errors(self.y),
+                                       givens={
+                                           self.x: val_set_x[batch_start:batch_end],
+                                           self.y: val_set_y[batch_start:batch_end]},
+                                       allow_input_downcast=True)
 
         # start training over mini-batches
         print 'training...'
         best_val_perf = 0
-        test_perf = 0       
         for epoch in xrange(epochs):
             start_time = time.time()
             # FIXME: should permute whole set rather than minibatch indexes
             if shuffle_batch:
                 for minibatch_index in np.random.permutation(range(n_train_batches)):
-                    cost_epoch = train_model(minibatch_index)
+                    cost_epoch = train_function(minibatch_index)
                     self.set_zero(self.zero_vec) # CHECKME: Why?
             else:
                 for minibatch_index in xrange(n_train_batches):
-                    cost_epoch = train_model(minibatch_index)  
+                    cost_epoch = train_function(minibatch_index)  
                     self.set_zero(self.zero_vec)
             train_losses = [train_error(i) for i in xrange(n_train_batches)]
             train_perf = 1 - np.mean(train_losses)
-            val_losses = [val_model(i) for i in xrange(n_val_batches)]
+            val_losses = [val_error(i) for i in xrange(n_val_batches)]
             val_perf = 1 - np.mean(val_losses)                        
+
             print('epoch: %i, training time: %.2f secs, train perf: %.2f %%, val perf: %.2f %%' % (
-                epoch, time.time()-start_time, train_perf * 100., val_perf*100.))
+                epoch, time.time()-start_time, train_perf * 100,
+                val_perf * 100))
             if val_perf >= best_val_perf:
                 best_val_perf = val_perf
-                test_loss = test_model(test_set_x, test_set_y)        
-                test_perf = 1 - test_loss         
-        return test_perf
+                # dump model
+                save()
+        return val_perf
 
 
     def sgd_updates_adadelta(self, cost, rho=0.95, epsilon=1e-6, norm_lim=9,
@@ -648,6 +645,9 @@ class ConvNet(MLPDropout):
 
 
     def predict(self, test_set_x):
+        """
+        :return: symbolic expression to predict results for data in :param test_set_x:
+        """
         test_size = test_set_x.shape[0]
         height = test_set_x.shape[1]
         layer0_input = self.Words[T.cast(self.x.flatten(), dtype="int32")].reshape(
@@ -656,26 +656,37 @@ class ConvNet(MLPDropout):
         for conv_layer in self.conv_layers:
             layer0_output = conv_layer.predict(layer0_input, test_size)
             layer0_outputs.append(layer0_output.flatten(2))
-        layer1_input = T.concatenate(layer0_outputs, 1)
-        return super(ConvNet, self).predict(layer1_input)
+        mlp_input = T.concatenate(layer0_outputs, 1)
+        return super(ConvNet, self).predict(mlp_input) # MLPDropout
+
+
+    def __getvalues__(self):
+        """Access value of parameters."""
+        return [p.get_value() for p in self.params]
+
+
+    def __setvalues__(self, weights):
+        """Set the value of parameters."""
+        for p,w in zip(self.params, weights):
+            p.set_value(w)
 
 
     def save(self, mfile):
         """
         Save network params to file.
         """
-        pickle.dump((self.params, self.layers, self.conv_layers),
+        pickle.dump((self.params, self.layers, self.conv_layers, self.activations),
                     mfile, protocol=pickle.HIGHEST_PROTOCOL)
+        # FIXME: we might dump values and recreate layers.
+        #pickle.dump(self.__getvalues__(), mfile, protocol=pickle.HIGHEST_PROTOCOL)
 
 
     @classmethod
     def load(cls, mfile):
         cnn = cls.__new__(cls)
-        cnn.params, cnn.layers, cnn.conv_layers = pickle.load(mfile)
+        cnn.params, cnn.layers, cnn.conv_layers, cnn.activations = pickle.load(mfile)
         cnn.Words = cnn.params[-1]
-        cnn.index = T.lscalar()
         cnn.x = T.matrix('x')   
-        cnn.y = T.ivector('y')
         return cnn
 
 
@@ -689,13 +700,13 @@ def as_floatX(variable):
 
 
 def shared_dataset(data_x, data_y, borrow=True):
-        """ Function that loads the dataset into shared variables
+        """Function that loads the dataset into shared variables.
 
         The reason we store our dataset in shared variables is to allow
         Theano to copy it into the GPU memory (when code is run on GPU).
-        Since copying data into the GPU is slow, copying a minibatch everytime
-        is needed (the default behaviour if the data is not in a shared
-        variable) would lead to a large decrease in performance.
+        Since copying data into the GPU is slow, copying a minibatch every time
+        is needed (the default behaviour if the data is not in a shared variable)
+        would lead to a large decrease in performance.
         """
         shared_x = theano.shared(np.asarray(data_x,
                                             dtype=theano.config.floatX),

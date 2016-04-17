@@ -1,20 +1,17 @@
-#!/usr/bin/env python
 
 import numpy as np
-import cPickle as pickle
 from collections import defaultdict
-import sys, re
 
 
-def build_data(train_file, clean_string=True, tagField=1, textField=2):
+def load_sentences(train_file, tagField=1, textField=2):
     """
-    Loads data.
+    Loads sentences.
     :param train_file: filename containing labeled sentences in TSV format.
     :return: sents (paired with labels), word doc freq, list of labels.
     """
     sents = []
     tags = {}
-    vocab = defaultdict(int)
+    word_df = defaultdict(int)
     with open(train_file, "rb") as f:
         for line in f:       
             fields = line.strip().split("\t")
@@ -22,49 +19,32 @@ def build_data(train_file, clean_string=True, tagField=1, textField=2):
             tag = fields[tagField]
             if tag not in tags:
                 tags[tag] = len(tags)
-            if clean_string:
-                clean_text = clean_str(text)
-            else:
-                clean_text = text.lower()
+            clean_text = text.lower()
             words = clean_text.split()
             for word in set(words):
-                vocab[word] += 1
+                word_df[word] += 1
             pair = (words, tags[tag])
             sents.append(pair)
     labels = [0] * len(tags)
     for tag,i in tags.iteritems():
         labels[i] = tag
-    return sents, vocab, labels
+    return sents, word_df, labels
 
 
-def get_W(word_vecs):
+def load_vectors(fname, binary=True):
     """
-    Get word matrix and word index dict. W[i] is the vector for word of index i.
+    Loads word vectors from file in word2vec format.
+    :param fname: name of file in word2vec format.
+    :return: vectors and word list.
     """
-    vocab_size = len(word_vecs)
-    word_idx_map = {}
-    k = len(word_vecs.itervalues().next())
-    # CHECKME: why +1?
-    W = np.zeros(shape=(vocab_size+1, k), dtype='float32')            
-    #W[0] = np.zeros(k, dtype='float32') # overridden below
-    #W = np.zeros(shape=(vocab_size, k), dtype='float32')            
-    for i, word in enumerate(word_vecs):
-        W[i] = word_vecs[word]
-        word_idx_map[word] = i
-    return W, word_idx_map
-
-
-def load_word2vec(fname, vocab, binary=True):
-    """
-    Loads word vectors from file in word2vec format
-    """
-    word_vecs = {}
     with open(fname, "rb") as f:
         header = f.readline()
-        vocab_size, layer1_size = map(int, header.split())
+        vocab_size, embeddings_size = map(int, header.split())
+        words = [''] * vocab_size
+        vectors = np.empty((vocab_size, embeddings_size), dtype='float32')
         if binary:
-            binary_len = np.dtype('float32').itemsize * layer1_size
-            for line in xrange(vocab_size):
+            binary_len = np.dtype('float32').itemsize * embeddings_size
+            for i in xrange(vocab_size):
                 word = []
                 while True:
                     ch = f.read(1)
@@ -73,58 +53,67 @@ def load_word2vec(fname, vocab, binary=True):
                         break
                     if ch != '\n':
                         word.append(ch)   
-                if word in vocab:
-                   word_vecs[word] = np.fromstring(f.read(binary_len), dtype='float32')  
+                words[i] = word
+                vectors[i,:] = np.fromstring(f.read(binary_len), dtype='float32')  
+        else:                   # text
+            for i,line in enumerate(f):
+                items = line.split()
+                words[i] = unicode(items[0], 'utf-8')
+                vectors[i,:] = np.array(map(float, items[1:]))
+    return vectors, words
+
+
+def load_word_vectors(fname, word_index, binary=True):
+    """
+    Loads word vectors from file in word2vec format.
+    :param fname: name of file in word2vec format.
+    :return: vectors and word list.
+    """
+    with open(fname, "rb") as f:
+        header = f.readline()
+        vocab_size, embeddings_size = map(int, header.split())
+        vectors = np.zeros((len(word_index), embeddings_size), dtype='float32')
+        if binary:
+            binary_len = np.dtype('float32').itemsize * embeddings_size
+            for i in xrange(vocab_size):
+                word = []
+                while True:
+                    ch = f.read(1)
+                    if ch == ' ':
+                        word = ''.join(word)
+                        break
+                    if ch != '\n':
+                        word.append(ch)   
+                if word in word_index:
+                    vectors[word_index[word],:] = np.fromstring(f.read(binary_len), dtype='float32')  
                 else:
                     f.read(binary_len)
         else:                   # text
-            for line in f:
+            for i,line in enumerate(f):
                 items = line.split()
                 word = unicode(items[0], 'utf-8')
-                word_vecs[word] = np.array(map(float, items[1:]))
-    return word_vecs
+                if word in word_index:
+                    vectors[word_index[word],:] = np.array(map(float, items[1:]))
+    high = 2.38 / np.sqrt(len(vectors) + embeddings_size) # see (Bottou '88)
+    for i,v in enumerate(vectors):
+        if np.count_nonzero(v) == 0:
+            vectors[i:] = np.random.uniform(-high, high, embeddings_size)
+    return np.asarray(vectors, dtype="float32")
 
-
-def add_unknown_words(word_vecs, vocab, k, min_df=1):
+def add_unknown_words(vectors, words, word_df, k, min_df=1):
     """
-    For words that occur in at least min_df documents, create a separate word vector.    
-    0.25 is chosen so the unknown vectors have (approximately) same variance as pre-trained ones
+    Create word vector for words in :param word_df: that occur in at least :param min_df: documents.
+    :param word_df: dictionary of word document frequencies.
     :param k: size of embedding vectors.
     """
-    for word in vocab:
-        if word not in word_vecs and vocab[word] >= min_df:
-            word_vecs[word] = np.random.uniform(-0.25, 0.25, k)  
-
-
-def process_data(train_file, clean, w2v_file=None,
-                 tagField=1, textField=2, k=300):
-    """
-    :param k: embeddigs size (300 for GoogleNews)
-    :param cv: cross-validation folds, -1 for none
-    :return: sents (paired with labels), vectors, word dictionary, vocabulary, list of labels.
-    """
-    np.random.seed(345)         # for replicability
-    print "loading data...",
-    sents, vocab, labels = build_data(train_file,
-                                      clean_string=clean,
-                                      tagField=tagField, textField=textField)
-    max_l = max(len(words) for words,l in sents)
-    print "data loaded!"
-    print "number of sentences: " + str(len(sents))
-    print "vocab size: " + str(len(vocab))
-    print "max sentence length: " + str(max_l)
-    if w2v_file:
-        print "loading word2vec vectors...",
-        w2v = load_word2vec(w2v_file, vocab, w2v_file.endswith('.bin'))
-        # get embeddings size:
-        k = len(w2v.itervalues().next())
-        print "word2vec loaded (%d, %d)" % (len(w2v), k)
-        add_unknown_words(w2v, vocab, k)
-        W, word_idx_map = get_W(w2v)
-    else:
-        rand_vecs = {}
-        add_unknown_words(rand_vecs, vocab, k)
-        W, word_idx_map = get_W(rand_vecs)
-    return sents, W, word_idx_map, vocab, labels
-
-
+    wordset = set(words)
+    high = 2.38 / np.sqrt(len(vectors)) # see (Bottou '88)
+    start = len(vectors)
+    end = start
+    for word in word_df:
+        if word not in wordset and word_df[word] >= min_df:
+            end += 1
+            words.append(word)
+    vectors.resize((end, k), refcheck=False)
+    for i in range(start, end):
+        vectors[i:] = np.random.uniform(-high, high, k)

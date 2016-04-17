@@ -12,6 +12,7 @@ import theano.tensor as T
 from theano.tensor.signal import downsample
 from theano.tensor.nnet import conv2d
 from theano.tensor.shared_randomstreams import RandomStreams
+from collections import OrderedDict
 import time
 import cPickle as pickle
 
@@ -88,7 +89,7 @@ class LinearLayer(Layer):
 class DropoutLayer(Layer):
 
     def __init__(self, rng, dropout_rate):
-        Layer.__init__(self)
+        super(DropoutLayer, self).__init__()
         self.dropout_rate = dropout_rate
         self.srng = RandomStreams(rng.randint(1e6))
 
@@ -103,8 +104,8 @@ class LinearDropoutLayer(LinearLayer):
 
     def __init__(self, rng, n_in, n_out,
                  activation, dropout_rate, use_bias, W=None, b=None):
-        LinearLayer.__init__(self, rng=rng, n_in=n_in, n_out=n_out, W=W, b=b,
-                             activation=activation, use_bias=use_bias)
+        super(LinearDropoutLayer, self).__init__(rng=rng, n_in=n_in, n_out=n_out, W=W, b=b,
+                                           activation=activation, use_bias=use_bias)
         self.dropout_rate = dropout_rate
         self.srng = RandomStreams(rng.randint(1e6))
 
@@ -366,7 +367,7 @@ class LogisticRegression(object):
 class LeNetConvPoolLayer(Layer):
     """Pool Layer of a convolutional network."""
 
-    def __init__(self, rng, filter_shape, image_shape, poolsize=(2, 2), non_linear='tanh'):
+    def __init__(self, rng, filter_shape, image_shape, poolsize=(2, 2), non_linear="tanh"):
         """
         Allocate a LeNetConvPoolLayer with shared variable internal parameters.
 
@@ -405,20 +406,20 @@ class LeNetConvPoolLayer(Layer):
             W_bound = np.sqrt(6. / (fan_in + fan_out))
         self.W = theano.shared(np.asarray(rng.uniform(low=-W_bound, high=W_bound, size=filter_shape),
                                           dtype=theano.config.floatX),
-                               borrow=True, name='W_conv')
+                               borrow=True, name="W_conv")
         b_values = np.zeros((filter_shape[0],), dtype=theano.config.floatX)
-        self.b = theano.shared(value=b_values, borrow=True, name='b_conv')
+        self.b = theano.shared(value=b_values, borrow=True, name="b_conv")
         
         self.params = [self.W, self.b]
         
-    def output(self, input, batch_size):
+    def output(self, input):
         """
         :return: symbolic expression to predict results for :param input:
         """
-        input_shape = (batch_size, 1, self.image_shape[2], self.image_shape[3])
+        #input_shape = (batch_size, 1, self.image_shape[2], self.image_shape[3])
         conv_out = conv2d(input=input, filters=self.W,
                           filter_shape=self.filter_shape,
-                          input_shape=input_shape)
+                          input_shape=self.image_shape)
 
         pooled_out = downsample.max_pool_2d(input=conv_out, ds=self.poolsize, ignore_border=True)
 
@@ -453,79 +454,6 @@ class EmbeddingLayer(Layer):
         """
         return self.W[x]
 
-
-# ----------------------------------------------------------------------
-class Regularizer(object):
-
-    def __init__(self, l1=0., l2=0., maxnorm=0.):
-        self.__dict__.update(locals())
-
-    def max_norm(self, p, maxnorm):
-        if maxnorm > 0:
-            col_norms = p.norm(2, axis=0)
-            desired = T.clip(col_norms, 0, maxnorm)
-            p *= desired / (1e-7 + col_norms)
-        return p
-
-    def gradient_regularize(self, p, g):
-        g += p * self.l2
-        g += T.sgn(p) * self.l1
-        return g
-
-    def weight_regularize(self, p):
-        return self.max_norm(p, self.maxnorm)
-
-
-class UpdateRule(object):
-
-    def __init__(self):
-        self.__dict__.update(locals())
-
-    def updates(self, params, grads):
-        raise NotImplementedError
-
-
-class AdaDelta(UpdateRule):
-
-    def __init__(self, rho=0.95, epsilon=1e-6, maxnorm=3.0):
-        """
-        :param rho: adadelta decay factor.
-        :param maxnorm: max norm regularization.
-        """
-        self.__dict__.update(locals())
-        self.regularizer = Regularizer(maxnorm=maxnorm)
-
-    def updates(self, cost, params, word_vec_name='Words'):
-        """
-        See http://www.matthewzeiler.com/pubs/googleTR2012/googleTR2012.pdf
-        :param cost: cost to optimize.
-        :param params: network parameters.
-        :param word_vec_name: parameter not to regularize
-        :returns: a list of (variable, delta)
-        """
-        updates = []
-        grads = T.grad(cost, params)
-        for p, g in zip(params, grads):
-            zeros = np.zeros_like(p.get_value())
-            # E[g^2]_{t-1}
-            Eg2 = theano.shared(value=zeros)
-            Eg2_dx = self.rho * Eg2 + (1 - self.rho) * T.sqr(g)
-            updates.append((Eg2, Eg2_dx))
-
-            # E[(\Delta x)^2]_{t-1}
-            Edx2 = theano.shared(value=zeros)
-            delta_x_t = g * T.sqrt(Edx2 + self.epsilon) / T.sqrt(Eg2_dx + self.epsilon)
-            Edx2_dx = self.rho * Edx2 + (1 - self.rho) * T.sqr(delta_x_t)
-            updates.append((Edx2, Edx2_dx))
-
-            p_dx = p - delta_x_t
-            if p.ndim == 2 and p.name != word_vec_name:
-                # normalization too slow for embeddings
-                p_dx = self.regularizer.weight_regularize(p_dx)
-            updates.append((p, p_dx))
-        return updates 
-
-
 # ---------------------------------------------------------------------
 class ConvNet(MLPDropout):
     """
@@ -554,8 +482,18 @@ class ConvNet(MLPDropout):
 
         width = embeddings.shape[1]
 
-        self.emb_layer = EmbeddingLayer(embeddings, name='Words')
+        self.emb_layer = EmbeddingLayer(embeddings, name="Words")
 
+        # CHECKME: what for set_zero?
+        zero_vec_tensor = T.vector()
+        self.zero_vec = np.zeros(width)
+        # set to 0 Words[0]
+        Words = self.emb_layer.W
+        self.set_zero = theano.function([zero_vec_tensor],
+                                        updates=[(Words,
+                                                  T.set_subtensor(Words[0,:],
+                                                                  zero_vec_tensor))],
+                                        allow_input_downcast=True)
         # inputs to the ConvNet go to all convolutional filters:
         image_shape = (batch_size, 1, height, width) # e.g. (50, 1, 66, 300)
         layer0_input = self.emb_layer.output(self.x).reshape(image_shape)
@@ -579,10 +517,10 @@ class ConvNet(MLPDropout):
         layer1_input = T.concatenate(layer1_inputs, 1)
         layer_sizes = [feature_maps*len(filter_hs), output_units]
         # initiailze MLPDropout
-        MLPDropout.__init__(self, rng, input=layer1_input,
-                            layer_sizes=layer_sizes,
-                            activations=activations,
-                            dropout_rates=dropout_rates)
+        super(ConvNet, self).__init__(rng, input=layer1_input,
+                                      layer_sizes=layer_sizes,
+                                      activations=activations,
+                                      dropout_rates=dropout_rates)
 
         # add embeddings
         self.params += self.emb_layer.params
@@ -597,7 +535,6 @@ class ConvNet(MLPDropout):
         """
         layer0_input = self.emb_layer.output(self.x).reshape(
             (self.x.shape[0], 1, self.x.shape[1], self.emb_layer.W.shape[1]))
-        # FIXME: why layer.output complains if we don't pass input.shape[0]?
         layer0_outputs = [ layer.output(layer0_input, input.shape[0]).flatten(2)
                            for layer in self.conv_layers ]
         mlp_input = T.concatenate(layer0_outputs, 1)
@@ -605,7 +542,7 @@ class ConvNet(MLPDropout):
 
 
     def train(self, train_set, shuffle_batch=True,
-              epochs=25, updater=AdaDelta(), save=lambda: None):
+              epochs=25, updater=None, save=lambda: None):
         """
         Train a simple conv net
         :param train_set: list of word indices, last one is y.
@@ -679,9 +616,11 @@ class ConvNet(MLPDropout):
             if shuffle_batch:
                 for minibatch_index in np.random.permutation(range(n_train_batches)):
                     cost_epoch = train_function(minibatch_index)
+                    self.set_zero(self.zero_vec) # CHECKME: Why?
             else:
                 for minibatch_index in xrange(n_train_batches):
                     cost_epoch = train_function(minibatch_index)  
+                    self.set_zero(self.zero_vec)
             train_losses = [train_error(i) for i in xrange(n_train_batches)]
             train_perf = 1 - np.mean(train_losses)
             val_losses = [val_error(i) for i in xrange(n_val_batches)]

@@ -6,10 +6,10 @@ as described in paper:
 Convolutional Neural Networks for Sentence Classification
 http://arxiv.org/pdf/1408.5882v2.pdf
 """
+import sys
 import cPickle as pickle
 import numpy as np
 import theano
-import sys
 import argparse
 import warnings
 warnings.filterwarnings("ignore")   
@@ -17,7 +17,7 @@ warnings.filterwarnings("ignore")
 # run from everywhere without installing
 sys.path.append(".")
 from conv_net_classes import *
-from process_data import process_data
+from process_data import *
 
 
 def sent2indices(sent, word_index, max_l, pad):
@@ -67,12 +67,12 @@ def read_corpus(filename, word_index, max_l, pad=2, clean_string=False,
     return np.array(corpus, dtype="int32")
 
 
-def predict(cnn, test_set_x):
+def predict(cnn, x):
 
-    test_set_y_pred = cnn.predict(test_set_x)
+    y_pred = cnn.output(x)
     # compile expression
-    test_function = theano.function([cnn.x], test_set_y_pred, allow_input_downcast=True)
-    return test_function(test_set_x)
+    test_function = theano.function([cnn.x], y_pred, allow_input_downcast=True)
+    return test_function(x)
 
 
 if __name__=="__main__":
@@ -84,8 +84,6 @@ if __name__=="__main__":
                         help='train/test file in SemEval twitter format')
     parser.add_argument('-train', help='train model',
                         action='store_true')
-    parser.add_argument('-clean', help='tokenize text',
-                        action='store_true')
     parser.add_argument('-filters', type=str, default='3,4,5',
                         help='n[,n]* (default %(default)s)')
     parser.add_argument('-vectors', type=str,
@@ -94,7 +92,7 @@ if __name__=="__main__":
                         help='dropout probability (default %(default)s)')
     parser.add_argument('-hidden', type=int, default=100,
                         help='hidden units in feature map (default %(default)s)')
-    parser.add_argument('-epochs', type=int, default=100,
+    parser.add_argument('-epochs', type=int, default=25,
                         help='training iterations (default %(default)s)')
     parser.add_argument('-tagField', type=int, default=1,
                         help='label field in files (default %(default)s)')
@@ -121,56 +119,76 @@ if __name__=="__main__":
         sys.exit()
 
     # training
-    sents, U, word_index, vocab, labels = process_data(args.input, args.clean,
-                                                       args.vectors,
-                                                       args.tagField,
-                                                       args.textField)
-
+    np.random.seed(345)         # for replicability
+    print "loading sentences...",
     # sents is a list of pairs: (list of words, label)
-    # vocab: dict of word doc freq
-    filter_hs = [int(x) for x in args.filters.split(',')]
-    model = args.model
+    # word_df: dict of word doc freq
+    sents, word_df, labels = load_sentences(args.input,
+                                            tagField=args.tagField,
+                                            textField=args.textField)
+    max_l = max(len(words) for words,l in sents)
+    print "done!"
+    print "number of sentences: %d" % len(sents)
+    print "vocab size: %d" % len(word_df)
+    print "max sentence length: %d" % max_l
+
     if args.vectors:
-        print "using: word2vec vectors"
+        print "loading word2vec vectors...",
+        vectors, words = load_vectors(args.vectors, args.vectors.endswith('.bin'))
+        # get embeddings size:
+        k = vectors.shape[1]
+        print "done (%d, %d)" % vectors.shape
     else:
         print "using: random vectors"
+        vectors = []
+        words = []
+    print "adding unknown words...",
+    add_unknown_words(vectors, words, word_df, k)
+    print len(words)
+    word_index = {w:i for i,w in enumerate(words)}
+
+    filter_hs = [int(x) for x in args.filters.split(',')]
+    model = args.model
 
     # filter_h determines padding, hence it depends on largest filter size.
     pad = max(filter_hs) - 1
     max_l = max(len(x_y[0]) for x_y in sents)
     height = max_l + 2 * pad    # padding on both sides
-    width = U.shape[1]
+    width = vectors.shape[1]    # embeddings size
     feature_maps = args.hidden
     output_units = len(labels)
-    batch_size = 50
     conv_activation = "relu"
-    activation = Iden #T.tanh         # Iden
+    activation = Iden #T.tanh
     dropout_rate = args.dropout
-    sqr_norm_lim = 9
+    lr = 0.5
+    rho = 0.95
+    maxnorm = 3.0
+    batch_size = 50
     shuffle_batch = True
-    lr_decay = 0.95
     parameters = (("image shape", height, width),
                   ("filters", args.filters),
                   ("feature maps", feature_maps),
                   ("output units", output_units),
                   ("dropout rate", dropout_rate),
-                  ("batch size", batch_size),
-                  ("adadelta decay", lr_decay),
                   ("conv_activation", conv_activation),
                   ("activation", activation),
-                  ("sqr_norm_lim", sqr_norm_lim),
+                  ("lr", lr),
+                  ("rho", rho),
+                  ("maxnorm", maxnorm),
+                  ("batch size", batch_size),
                   ("shuffle batch", shuffle_batch))
     for param in parameters:
         print "%s: %s" % (param[0], ",".join(str(x) for x in param[1:]))
 
-    cnn = ConvNet(U, height, width,
-                  filter_hs=filter_hs,
-                  conv_activation=conv_activation,
-                  feature_maps=feature_maps,
-                  output_units=output_units,
-                  batch_size=batch_size,
-                  dropout_rates=[dropout_rate],
-                  activations=[activation])
+    cnn = ConvNet(vectors, height,
+              filter_hs=filter_hs,
+              conv_activation=conv_activation,
+              feature_maps=feature_maps,
+              output_units=output_units,
+              batch_size=batch_size,
+              dropout_rates=[dropout_rate],
+              activations=[activation])
+
     # each item in train is a list of indices for each sentencs plus the id of the label
     train = [sent2indices(words, word_index, max_l, pad) + [y]
              for words,y in sents]
@@ -182,8 +200,8 @@ if __name__=="__main__":
             cnn.save(mfile)
             pickle.dump((word_index, max_l, pad, labels), mfile)
 
+    updater = AdaDelta(rho=rho, maxnorm=maxnorm)
     cnn.train(train_set, epochs=args.epochs,
-              lr_decay=lr_decay,
               shuffle_batch=shuffle_batch, 
-              sqr_norm_lim=sqr_norm_lim,
+              updater=updater,
               save=save)

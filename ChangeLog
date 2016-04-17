@@ -1,3 +1,20 @@
+2016-04-17  Giuseppe Attardi  <attardi@R730-gpu>
+
+	* updates.py: various learning rules, including AdaGrad, AdaDelta, Adam.
+	Also includes regularization methods.
+
+	* layers.py: more modular version of classes: each layer provides method output() to
+	generate predictions.
+
+2016-03-28  Giuseppe Attardi  <attardi@R730-gpu>
+
+	* conv_net_classes.py: updated deprecated theano.tensor.signal.downsample.conv2d with
+	theano.tensor.nnet.conv2d
+
+2016-03-27  Giuseppe Attardi  <attardi@R730-gpu>
+
+	* conv_net_classes.py (ConvNet.save): save/load self.activations
+
 2016-02-26  Giuseppe Attardi  <attardi@R730-gpu>
 
 	* process_data.py (load_word2vec): load vectors also in text format.

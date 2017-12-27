@@ -6,10 +6,10 @@ as described in paper:
 Convolutional Neural Networks for Sentence Classification
 http://arxiv.org/pdf/1408.5882v2.pdf
 """
+import sys
 import cPickle as pickle
 import numpy as np
 import theano
-import sys
 import argparse
 import warnings
 warnings.filterwarnings("ignore")   
@@ -27,7 +27,7 @@ def sent2indices(sent, word_index, max_l, pad):
     :param sent: list of words.
     :param word_index: associates an index to each word
     :param max_l: max sentence length
-    :param pad: pad length
+    :param pad: pad size
     """
     x = [0] * pad                # left padding
     for word in sent:
@@ -41,7 +41,7 @@ def sent2indices(sent, word_index, max_l, pad):
     return x + rpad
 
 
-def read_corpus(filename, word_index, max_l, pad=2, lower=True,
+def read_corpus(filename, word_index, max_l, pad=2, clean_string=False,
                 textField=3):
     """
     Load test corpus, in TSV format.
@@ -57,48 +57,24 @@ def read_corpus(filename, word_index, max_l, pad=2, lower=True,
         for line in f:
             fields = line.strip().split("\t")
             text = fields[textField]
-            if lower:
-                text = text.lower()
-            sent = sent2indices(text, word_index, max_l, pad)
+            if clean_string:
+                text_clean = clean_str(text)
+            else:
+                text_clean = text.lower()
+            # turn sentences into lists of indices
+            sent = sent2indices(text_clean.split(), word_index, max_l, pad)
             corpus.append(sent)
-    return np.array(corpus, dtype="int32")
+    return np.array(corpus, dtype=np.int32)
 
 
-def predict(cnn, test_set_x):
+def predict(cnn, x):
 
-    test_set_y_pred = cnn.predict(test_set_x)
+    y_pred = cnn.output(x)
     # compile expression
-    test_function = theano.function([cnn.x], test_set_y_pred, allow_input_downcast=True)
-    return test_function(test_set_x)
+    test_function = theano.function([cnn.x], y_pred, allow_input_downcast=True)
+    return test_function(x)
 
 
-
-def kfold(n_samples, folds=3):
-    """
-    Provides train/test indices to split data in train/test sets. Split
-    dataset into k random folds.
-    Parameters
-    ----------
-    n_samples : int
-    folds : int, default=3
-    Number of folds.
-    """
-    
-    indices = np.arange(n_samples, dtype=np.int32))
-    if folds < 2:
-        yield indices
-        return
-
-    np.random.shuffle(indices)
-    fold_sizes = (n_samples // folds) * np.ones(folds, dtype=np.int32)
-    fold_sizes[:n_samples % folds] += 1
-    current = 0
-    for fold_size in fold_sizes:
-        start, stop = current, current + fold_size
-        yield np.append(indices[:start], indices[stop:]), indices[start:stop]
-        current = stop
-
-    
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="CNN sentence classifier.")
     
@@ -108,10 +84,6 @@ if __name__=="__main__":
                         help='train/test file in SemEval twitter format')
     parser.add_argument('-train', help='train model',
                         action='store_true')
-    parser.add_argument('-lower', help='lowercase text', default=False,
-                        action='store_true')
-    parser.add_argument('-cv', type=int, default=10,
-                        help='perform cross validation, 0 for no cross varlidation')
     parser.add_argument('-filters', type=str, default='3,4,5',
                         help='n[,n]* (default %(default)s)')
     parser.add_argument('-vectors', type=str,
@@ -137,9 +109,7 @@ if __name__=="__main__":
         with open(args.model) as mfile:
             cnn = ConvNet.load(mfile)
             word_index, max_l, pad, labels = pickle.load(mfile)
-
-        test_set_x = read_corpus(args.input, word_index, max_l, pad, textField=args.textField,
-                                 lower=args.lower)
+        test_set_x = read_corpus(args.input, word_index, max_l, pad, textField=args.textField)
         results = predict(cnn, test_set_x)
         # convert indices to labels
         for line, y in zip(open(args.input), results):
@@ -151,13 +121,13 @@ if __name__=="__main__":
     # training
     np.random.seed(345)         # for replicability
     print "loading sentences...",
-    # sents is a list of pairs: (list of words, label index)
-    # word_df: dict of word => doc freq
+    # sents is a list of pairs: (list of words, label)
+    # word_df: dict of word doc freq
     sents, word_df, labels = load_sentences(args.input,
                                             tagField=args.tagField,
-                                            textField=args.textField,
-                                            lower=args.lower)
+                                            textField=args.textField)
     max_l = max(len(words) for words,l in sents)
+    print "done!"
     print "number of sentences: %d" % len(sents)
     print "vocab size: %d" % len(word_df)
     print "max sentence length: %d" % max_l
@@ -176,10 +146,6 @@ if __name__=="__main__":
     add_unknown_words(vectors, words, word_df, k)
     print len(words)
     word_index = {w:i for i,w in enumerate(words)}
-
-    # each item in train is a list of indices for each sentencs plus the id of the label
-    train = [sent2indices(words, word_index, max_l, pad) + [y]
-             for words,y in sents]
 
     filter_hs = [int(x) for x in args.filters.split(',')]
     model = args.model
@@ -213,36 +179,28 @@ if __name__=="__main__":
     for param in parameters:
         print "%s: %s" % (param[0], ",".join(str(x) for x in param[1:]))
 
+    cnn = ConvNet(vectors, height,
+              filter_hs=filter_hs,
+              conv_activation=conv_activation,
+              feature_maps=feature_maps,
+              output_units=output_units,
+              batch_size=batch_size,
+              dropout_rates=[dropout_rate],
+              activations=[activation])
+
+    # each item in train is a list of indices for each sentencs plus the id of the label
+    train = [sent2indices(words, word_index, max_l, pad) + [y]
+             for words,y in sents]
+    train_set = np.array(train, dtype=np.int32)
+
     # model saver
     def save():
         with open(model, "wb") as mfile:
             cnn.save(mfile)
             pickle.dump((word_index, max_l, pad, labels), mfile)
 
-    results = []
-    # ensure replicability
-    np.random.seed(3435)
-    # perform n-fold cross-validation
-    if args.cv < 2:
-        cv = 1
-    else:
-        cv = args.cv
-    folds = kfold(len(sents), cv)
-    for i in range(cv):
-        train_fold, test_fold = folds.next()
-        cnn = ConvNet(vectors, height,
-                      filter_hs=filter_hs,
-                      conv_activation=conv_activation,
-                      feature_maps=feature_maps,
-                      output_units=output_units,
-                      batch_size=batch_size,
-                      dropout_rates=[dropout_rate],
-                      activations=[activation])
-        updater = AdaDelta(rho=rho, maxnorm=maxnorm)
-        perf = cnn.train(train[train_fold], epochs=args.epochs,
-                         shuffle_batch=shuffle_batch, 
-                         updater=updater,
-                         save=save)
-        print "cv: %d, perf: %f" % (i, perf)
-        results.append(perf)  
-    print "Avg. accuracy: %.4f" % np.mean(results)
+    updater = AdaDelta(rho=rho, maxnorm=maxnorm)
+    cnn.train(train_set, epochs=args.epochs,
+              shuffle_batch=shuffle_batch, 
+              updater=updater,
+              save=save)

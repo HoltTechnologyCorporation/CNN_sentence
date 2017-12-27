@@ -49,6 +49,7 @@ def read_corpus(filename, word_index, max_l, pad=2, lower=True,
     :param word_index: word IDs.
     :param max_l: max sentence length.
     :param pad: padding size.
+    :param lower: whether to lowercase words.
     :param textField: index of field containing text.
     :return: an array, each row consists of sentence word indices
     """

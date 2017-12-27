@@ -41,7 +41,7 @@ def sent2indices(sent, word_index, max_l, pad):
     return x + rpad
 
 
-def read_corpus(filename, word_index, max_l, pad=2, clean_string=False,
+def read_corpus(filename, word_index, max_l, pad=2, lower=True,
                 textField=3):
     """
     Load test corpus, in TSV format.
@@ -49,6 +49,7 @@ def read_corpus(filename, word_index, max_l, pad=2, clean_string=False,
     :param word_index: word IDs.
     :param max_l: max sentence length.
     :param pad: padding size.
+    :param lower: whether to lowercase words.
     :param textField: index of field containing text.
     :return: an array, each row consists of sentence word indices
     """
@@ -57,12 +58,10 @@ def read_corpus(filename, word_index, max_l, pad=2, clean_string=False,
         for line in f:
             fields = line.strip().split("\t")
             text = fields[textField]
-            if clean_string:
-                text_clean = clean_str(text)
-            else:
-                text_clean = text.lower()
+            if lower:
+                text = text.lower()
             # turn sentences into lists of indices
-            sent = sent2indices(text_clean.split(), word_index, max_l, pad)
+            sent = sent2indices(text.split(), word_index, max_l, pad)
             corpus.append(sent)
     return np.array(corpus, dtype=np.int32)
 
@@ -83,6 +82,8 @@ if __name__=="__main__":
     parser.add_argument('input', type=str,
                         help='train/test file in SemEval twitter format')
     parser.add_argument('-train', help='train model',
+                        action='store_true')
+    parser.add_argument('-lower', help='lowercase text', default=False,
                         action='store_true')
     parser.add_argument('-filters', type=str, default='3,4,5',
                         help='n[,n]* (default %(default)s)')
@@ -109,7 +110,8 @@ if __name__=="__main__":
         with open(args.model) as mfile:
             cnn = ConvNet.load(mfile)
             word_index, max_l, pad, labels = pickle.load(mfile)
-        test_set_x = read_corpus(args.input, word_index, max_l, pad, textField=args.textField)
+        test_set_x = read_corpus(args.input, word_index, max_l, pad, textField=args.textField,
+                                 lower=args.lower)
         results = predict(cnn, test_set_x)
         # convert indices to labels
         for line, y in zip(open(args.input), results):
@@ -121,13 +123,13 @@ if __name__=="__main__":
     # training
     np.random.seed(345)         # for replicability
     print "loading sentences...",
-    # sents is a list of pairs: (list of words, label)
-    # word_df: dict of word doc freq
+    # sents is a list of pairs: (list of words, label index)
+    # word_df: dict of word => doc freq
     sents, word_df, labels = load_sentences(args.input,
                                             tagField=args.tagField,
-                                            textField=args.textField)
+                                            textField=args.textField,
+                                            lower=args.lower)
     max_l = max(len(words) for words,l in sents)
-    print "done!"
     print "number of sentences: %d" % len(sents)
     print "vocab size: %d" % len(word_df)
     print "max sentence length: %d" % max_l

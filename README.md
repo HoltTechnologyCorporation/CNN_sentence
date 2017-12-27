@@ -21,12 +21,12 @@ https://code.google.com/p/word2vec/
 
 ### Invocation
 ```
-usage: conv_net_sentence.py [-h] [-train] [-static] [-vectors VECTORS] [-filters FILTERS]
-                            [-clean] [-dropout DROPOUT] [-epochs EPOCHS]
+usage: conv_net_tweets.py [-h] [-train] [-vectors VECTORS] [-filters FILTERS]
+                            [-lower] [-dropout DROPOUT] [-epochs EPOCHS]
                             [-tagField TAGFIELD] [-textField TEXTFIELD]
                             model input
 
-CNN sentence classifier.
+CNN sentence/tweet classifier.
 
 positional arguments:
   model                 model file (default mr)
@@ -35,8 +35,7 @@ positional arguments:
 optional arguments:
   -h, --help            show this help message and exit
   -train                train model
-  -static               static or nonstatic
-  -clean                tokenize text
+  -lower                whether to lowercase text
   -filters FILTERS      n[,n]* (default 3,4,5)
   -vectors VECTORS      word2vec embeddings file (random values if missing)
   -dropout DROPOUT      dropout probability (default 0.5)
@@ -46,26 +45,32 @@ optional arguments:
 ```
 
 VECTORS is the word2vec binary file (e.g. `GoogleNews-vectors-negative300.bin` file),
-clean, if present, text is lower-cased and tokenized,
+clean, if present, text is lower-cased.
 
 input contain sentences from the corpus in SemEval format, i.e. one sentence
 per line, tab separated values:
 
-ID	UID	text
+```
+ID	UID	text	label
+```
 
-Note: This will create the dataset with different fold-assignments than was used in the paper.
-You should still be getting a CV score of >81% with CNN-nonstatic model, though.
+Also a sentence classifier is present, that does cross validation on the training set for evaluating the performance of the classifier, like in the original code:
+```
+conv_net_sentence.py [-h] [-train] [-vectors VECTORS] [-filters FILTERS]
+                            [-lower] [-dropout DROPOUT] [-epochs EPOCHS]
+                            [-tagField TAGFIELD] [-textField TEXTFIELD]
+                            model input
+```
 
 ### Running the models (CPU)
 Example commands:
 
 ```
-THEANO_FLAGS=mode=FAST_RUN,device=cpu,floatX=float32 ./conv_net_sentence.py mr.rand mr.tsv
-THEANO_FLAGS=mode=FAST_RUN,device=cpu,floatX=float32 ./conv_net_sentence.py -vectors w2v_file -static mr.w2v-static mr.tsv
 THEANO_FLAGS=mode=FAST_RUN,device=cpu,floatX=float32 ./conv_net_sentence.py -vectors w2v_file mr.w2v mr.tsv
 ```
 
-This will run the CNN-rand, CNN-static, and CNN-nonstatic models respectively in the paper.
+This will run the CNN classifier using the embeddings from file w2v_file and
+the sentences in the TSV file mr.tsv and saving the model to file mr.w2v.
 
 ### Using the GPU
 GPU will result in a good 10x to 20x speed-up, so it is highly recommended. 
@@ -98,9 +103,6 @@ https://github.com/dennybritz/cnn-text-classification-tf
 He also wrote a [nice tutorial](http://www.wildml.com/2015/12/implementing-a-cnn-for-text-classification-in-tensorflow) on it, as well as a general tutorial on [CNNs for NLP](http://www.wildml.com/2015/11/understanding-convolutional-neural-networks-for-nlp).
 
 ### Hyperparameters
-At the time of my original experiments I did not have access to a GPU so I could not run a lot of different experiments.
-Hence the paper is missing a lot of things like ablation studies and variance in performance.
-
 Ye Zhang has written a [very nice paper](http://arxiv.org/abs/1510.03820) doing an extensive analysis of model variants (e.g. filter widths, k-max pooling, word2vec vs Glove, etc.) and their effect on performance.
 
 ### SemEval-2015 Task 10: Sentiment Analysis in Twitter

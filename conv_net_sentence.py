@@ -56,18 +56,16 @@ def make_idx_data_cv(revs, word_index, cv, max_l, pad):
     return train, test
   
 
-def read_corpus(filename, word_index, max_l, pad=2, clean_string=False,
+def read_corpus(filename, word_index, max_l, pad=2, lower=True,
                 textField=3):
     test = []
     with open(filename) as f:
         for line in f:
             fields = line.strip().split("\t")
             text = fields[textField]
-            if clean_string:
-                text_clean = clean_str(text)
-            else:
-                text_clean = text.lower()
-            sent = get_idx_from_sent(text_clean, word_index, max_l, pad)
+            if lower:
+                text = text.lower()
+            sent = get_idx_from_sent(text, word_index, max_l, pad)
             #sent.append(0)      # unknown y
             test.append(sent)
     return np.array(test, dtype="int32")

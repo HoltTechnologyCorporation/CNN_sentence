@@ -560,6 +560,9 @@ class ConvNet(MLPDropout):
                                       givens={
                                           self.x: train_set_x[batch_start:batch_end],
                                           self.y: train_set_y[batch_start:batch_end]},
+                                      # debug
+                                      # mode=theano.compile.MonitorMode(
+                                      #     pre_func=inspect),
                                       allow_input_downcast = True)
 
         val_model = theano.function([self.index], self.errors(self.y),
